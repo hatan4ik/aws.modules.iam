@@ -71,7 +71,35 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
   }
 
   assert {
+    condition     = length(aws_iam_role.image_publisher) == 0
+    error_message = "Image-publisher roles must be opt-in and absent when no application publisher is declared."
+  }
+
+  assert {
     condition     = aws_iam_openid_connect_provider.github_actions.tags["IaCOwnership"] == "terraform"
     error_message = "Terraform must persist its ownership tag after CloudFormation stack retirement."
+  }
+}
+
+run "plans_a_dedicated_ecr_publisher_for_the_declared_repository_only" {
+  command = plan
+
+  variables {
+    image_publishers = {
+      "auth-demo" = {
+        github_subject  = "repo:hatan4ik/sandbox-auth-demo:environment:dev"
+        repository_name = "sandbox-platform-dev-application"
+      }
+    }
+  }
+
+  assert {
+    condition     = local.image_publisher_role_names["auth-demo"] == "devops-aws-infra-sandbox-auth-demo-ecr-push"
+    error_message = "The image publisher must have a deterministic, isolated role name."
+  }
+
+  assert {
+    condition     = length(aws_iam_role.image_publisher) == 1 && length(aws_iam_role_policy.image_publisher) == 1
+    error_message = "A declared image publisher must create exactly one role and one inline ECR policy."
   }
 }

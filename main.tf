@@ -28,6 +28,16 @@ locals {
     key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/github-actions/${name}"
   }
 
+  image_publisher_role_names = {
+    for key in keys(var.image_publishers) :
+    key => "${var.role_prefix}-${key}-ecr-push"
+  }
+
+  image_publisher_role_arns = {
+    for key, name in local.image_publisher_role_names :
+    key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/github-actions/${name}"
+  }
+
   github_roles = {
     plan = {
       description = "OIDC plan role. No permissions until a reviewed root policy is attached."
@@ -190,6 +200,64 @@ resource "aws_iam_role" "github_actions" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+resource "aws_iam_role" "image_publisher" {
+  for_each = var.image_publishers
+
+  name                 = local.image_publisher_role_names[each.key]
+  path                 = "/github-actions/"
+  description          = "GitHub OIDC image publisher for ${each.value.repository_name}."
+  max_session_duration = 3600
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Principal = { Federated = aws_iam_openid_connect_provider.github_actions.arn }
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = each.value.github_subject
+        }
+      }
+    }]
+  })
+  tags = merge(local.github_oidc_tags, {
+    Purpose = "github-actions-ecr-image-publisher"
+  })
+}
+
+resource "aws_iam_role_policy" "image_publisher" {
+  for_each = var.image_publishers
+
+  name = "ecr-image-publish"
+  role = aws_iam_role.image_publisher[each.key].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "GetEcrAuthorizationToken"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
+      {
+        Sid    = "PushOnlyDeclaredRepository"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeImages",
+          "ecr:InitiateLayerUpload",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart",
+        ]
+        Resource = "arn:${data.aws_partition.current.partition}:ecr:${var.aws_region}:${var.aws_account_id}:repository/${each.value.repository_name}"
+      },
+    ]
+  })
 }
 
 resource "aws_iam_policy" "sandbox_network_plan" {

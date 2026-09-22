@@ -17,6 +17,11 @@ output "role_arns" {
   value       = local.github_role_arns
 }
 
+output "image_publisher_role_arns" {
+  description = "Dedicated GitHub OIDC role ARNs that can push only to their declared ECR repositories."
+  value       = { for key, role in aws_iam_role.image_publisher : key => role.arn }
+}
+
 output "github_oidc_provider_arn" {
   description = "Terraform-owned GitHub Actions OIDC provider ARN."
   value       = aws_iam_openid_connect_provider.github_actions.arn
