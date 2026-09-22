@@ -5,6 +5,8 @@ output "policy_arns" {
     sandbox_network_dev_apply  = aws_iam_policy.sandbox_network_dev_apply.arn
     sandbox_platform_plan      = aws_iam_policy.sandbox_platform_plan.arn
     sandbox_platform_dev_apply = aws_iam_policy.sandbox_platform_dev_apply.arn
+    sandbox_workload_plan      = aws_iam_policy.sandbox_workload_plan.arn
+    sandbox_workload_dev_apply = aws_iam_policy.sandbox_workload_dev_apply.arn
     identity_plan              = aws_iam_policy.identity_plan.arn
     identity_dev_apply         = aws_iam_policy.identity_dev_apply.arn
   }
