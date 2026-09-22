@@ -61,6 +61,16 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
   }
 
   assert {
+    condition = alltrue([
+      for policy in [aws_iam_policy.sandbox_workload_plan.policy, aws_iam_policy.sandbox_workload_dev_apply.policy] : anytrue([
+        for statement in jsondecode(policy).Statement :
+        statement.Sid == "ReadOnlySandboxWorkloadAutoscalingTags" ? statement.Action == "application-autoscaling:ListTagsForResource" && statement.Resource == "arn:aws:application-autoscaling:us-east-2:448871779014:scalable-target/*" : false
+      ])
+    ])
+    error_message = "Workload plan and apply roles must read tags only from scalable targets in the approved account and Region."
+  }
+
+  assert {
     condition = anytrue([
       for statement in jsondecode(aws_iam_policy.sandbox_workload_dev_apply.policy).Statement :
       statement.Sid == "CreateOnlyEcsAutoscalingServiceLinkedRole" ? statement.Resource == "arn:aws:iam::448871779014:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService" && statement.Condition.StringLike["iam:AWSServiceName"] == "ecs.application-autoscaling.amazonaws.com" : false
