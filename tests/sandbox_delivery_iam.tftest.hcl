@@ -53,6 +53,14 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
   }
 
   assert {
+    condition = anytrue([
+      for statement in jsondecode(aws_iam_policy.sandbox_workload_dev_apply.policy).Statement :
+      statement.Sid == "ManageSandboxWorkloadAutoscaling" ? contains(statement.Action, "application-autoscaling:TagResource") : false
+    ])
+    error_message = "The workload apply role must be able to tag scalable targets created by Terraform."
+  }
+
+  assert {
     condition     = aws_iam_policy.sandbox_platform_plan.name == "devops-aws-infra-sandbox-sandbox-platform-plan"
     error_message = "The platform plan policy name must remain stable for zero-change CloudFormation adoption."
   }
