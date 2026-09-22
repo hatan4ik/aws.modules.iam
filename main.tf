@@ -240,6 +240,10 @@ resource "aws_iam_policy" "sandbox_workload_plan" {
   lifecycle {
     prevent_destroy = true
   }
+
+  # The existing identity apply policy must first gain iam:CreatePolicy before
+  # Terraform can create these newly introduced tracked policies.
+  depends_on = [aws_iam_policy.identity_dev_apply]
 }
 
 resource "aws_iam_policy" "sandbox_workload_dev_apply" {
@@ -250,6 +254,8 @@ resource "aws_iam_policy" "sandbox_workload_dev_apply" {
   lifecycle {
     prevent_destroy = true
   }
+
+  depends_on = [aws_iam_policy.identity_dev_apply]
 }
 
 resource "aws_iam_policy" "identity_plan" {
