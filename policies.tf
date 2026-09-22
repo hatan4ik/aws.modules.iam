@@ -99,6 +99,26 @@ locals {
     },
   ]
 
+  sandbox_platform_state_read_statements = [
+    {
+      Sid      = "ListSandboxPlatformStateForWorkload"
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = local.state_bucket_arn
+      Condition = {
+        StringLike = {
+          "s3:prefix" = "${local.sandbox_platform_state_prefix}*"
+        }
+      }
+    },
+    {
+      Sid      = "ReadSandboxPlatformStateForWorkload"
+      Effect   = "Allow"
+      Action   = "s3:GetObject"
+      Resource = "${local.state_bucket_arn}/${local.sandbox_platform_state_prefix}*"
+    },
+  ]
+
   sandbox_network_read_statement = {
     Sid    = "ReadSandboxNetworkResources"
     Effect = "Allow"
@@ -402,12 +422,12 @@ locals {
 
   sandbox_workload_plan_policy = {
     Version   = "2012-10-17"
-    Statement = concat(local.sandbox_workload_state_statements, [local.sandbox_workload_read_statement])
+    Statement = concat(local.sandbox_workload_state_statements, local.sandbox_platform_state_read_statements, [local.sandbox_workload_read_statement])
   }
 
   sandbox_workload_dev_apply_policy = {
     Version = "2012-10-17"
-    Statement = concat(local.sandbox_workload_state_statements, [
+    Statement = concat(local.sandbox_workload_state_statements, local.sandbox_platform_state_read_statements, [
       local.sandbox_workload_read_statement,
       {
         Sid    = "ManagePrivateSandboxWorkloadSecurityGroups"
