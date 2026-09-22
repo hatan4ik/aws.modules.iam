@@ -477,6 +477,17 @@ locals {
         Resource = "*"
       },
       {
+        Sid      = "CreateOnlyEcsAutoscalingServiceLinkedRole"
+        Effect   = "Allow"
+        Action   = "iam:CreateServiceLinkedRole"
+        Resource = "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService"
+        Condition = {
+          StringLike = {
+            "iam:AWSServiceName" = "ecs.application-autoscaling.amazonaws.com"
+          }
+        }
+      },
+      {
         Sid    = "ManageOnlySandboxWorkloadTaskRoles"
         Effect = "Allow"
         Action = [

@@ -61,6 +61,14 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
   }
 
   assert {
+    condition = anytrue([
+      for statement in jsondecode(aws_iam_policy.sandbox_workload_dev_apply.policy).Statement :
+      statement.Sid == "CreateOnlyEcsAutoscalingServiceLinkedRole" ? statement.Resource == "arn:aws:iam::448871779014:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService" && statement.Condition.StringLike["iam:AWSServiceName"] == "ecs.application-autoscaling.amazonaws.com" : false
+    ])
+    error_message = "The workload apply role may create only the ECS Application Auto Scaling service-linked role when the account lacks it."
+  }
+
+  assert {
     condition     = aws_iam_policy.sandbox_platform_plan.name == "devops-aws-infra-sandbox-sandbox-platform-plan"
     error_message = "The platform plan policy name must remain stable for zero-change CloudFormation adoption."
   }
