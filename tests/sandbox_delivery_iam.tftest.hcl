@@ -45,6 +45,14 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
   }
 
   assert {
+    condition = anytrue([
+      for statement in jsondecode(aws_iam_policy.sandbox_workload_plan.policy).Statement :
+      statement.Sid == "ReadSandboxPlatformStateForWorkload" ? statement.Resource == "arn:aws:s3:::platform-tf-state-shared-f3ddb8cc/gitops/sandbox-platform/us-east-2/dev/*" : false
+    ])
+    error_message = "The workload plan role must be able to read only the sandbox-platform state required for platform outputs."
+  }
+
+  assert {
     condition     = aws_iam_policy.sandbox_platform_plan.name == "devops-aws-infra-sandbox-sandbox-platform-plan"
     error_message = "The platform plan policy name must remain stable for zero-change CloudFormation adoption."
   }
