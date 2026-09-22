@@ -209,6 +209,13 @@ locals {
     Resource = "*"
   }
 
+  sandbox_workload_autoscaling_tag_read_statement = {
+    Sid      = "ReadOnlySandboxWorkloadAutoscalingTags"
+    Effect   = "Allow"
+    Action   = "application-autoscaling:ListTagsForResource"
+    Resource = "arn:${data.aws_partition.current.partition}:application-autoscaling:${var.aws_region}:${var.aws_account_id}:scalable-target/*"
+  }
+
   sandbox_network_plan_policy = {
     Version   = "2012-10-17"
     Statement = concat(local.sandbox_network_state_statements, [local.sandbox_network_read_statement])
@@ -421,14 +428,18 @@ locals {
   }
 
   sandbox_workload_plan_policy = {
-    Version   = "2012-10-17"
-    Statement = concat(local.sandbox_workload_state_statements, local.sandbox_platform_state_read_statements, [local.sandbox_workload_read_statement])
+    Version = "2012-10-17"
+    Statement = concat(local.sandbox_workload_state_statements, local.sandbox_platform_state_read_statements, [
+      local.sandbox_workload_read_statement,
+      local.sandbox_workload_autoscaling_tag_read_statement,
+    ])
   }
 
   sandbox_workload_dev_apply_policy = {
     Version = "2012-10-17"
     Statement = concat(local.sandbox_workload_state_statements, local.sandbox_platform_state_read_statements, [
       local.sandbox_workload_read_statement,
+      local.sandbox_workload_autoscaling_tag_read_statement,
       {
         Sid    = "ManagePrivateSandboxWorkloadSecurityGroups"
         Effect = "Allow"
