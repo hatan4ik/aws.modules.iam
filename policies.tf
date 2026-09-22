@@ -291,6 +291,7 @@ locals {
         Sid    = "ManageDedicatedSandboxPlatformDataKey"
         Effect = "Allow"
         Action = [
+          "kms:CreateAlias",
           "kms:CreateGrant",
           "kms:Decrypt",
           "kms:DescribeKey",
