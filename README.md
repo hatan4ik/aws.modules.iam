@@ -1,7 +1,9 @@
 # Sandbox delivery IAM module
 
 Owns the sandbox GitHub Actions OIDC provider, six environment-scoped roles,
-the existing sandbox network/platform delivery policies, and their attachments.
+the sandbox network, platform, and workload delivery policies, and their
+attachments. The workload policies use a dedicated state prefix and separate
+plan/apply authorization boundary for private ECS services.
 All account-qualified ARNs are derived from the supplied account, Region, AWS
 partition, names, and state KMS key ID; callers do not repeat an account ID
 inside policy documents.

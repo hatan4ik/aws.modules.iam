@@ -1,6 +1,7 @@
 locals {
   sandbox_network_state_prefix  = "gitops/sandbox-network/us-east-2/dev/"
   sandbox_platform_state_prefix = "gitops/sandbox-platform/us-east-2/dev/"
+  sandbox_workload_state_prefix = "gitops/sandbox-workload/us-east-2/dev/"
 
   sandbox_network_state_statements = [
     {
@@ -51,6 +52,38 @@ locals {
       Effect   = "Allow"
       Action   = ["s3:GetObject", "s3:PutObject"]
       Resource = "${local.state_bucket_arn}/${local.sandbox_platform_state_prefix}*"
+    },
+    {
+      Sid      = "UseOnlyTheStateEncryptionKey"
+      Effect   = "Allow"
+      Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey"]
+      Resource = local.state_kms_key_arn
+    },
+    {
+      Sid      = "LockOnlyTheDedicatedStateTable"
+      Effect   = "Allow"
+      Action   = ["dynamodb:DeleteItem", "dynamodb:DescribeTable", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+      Resource = local.state_lock_table_arn
+    },
+  ]
+
+  sandbox_workload_state_statements = [
+    {
+      Sid      = "ListOnlySandboxWorkloadStatePrefix"
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = local.state_bucket_arn
+      Condition = {
+        StringLike = {
+          "s3:prefix" = "${local.sandbox_workload_state_prefix}*"
+        }
+      }
+    },
+    {
+      Sid      = "ReadAndWriteOnlySandboxWorkloadStateObject"
+      Effect   = "Allow"
+      Action   = ["s3:GetObject", "s3:PutObject"]
+      Resource = "${local.state_bucket_arn}/${local.sandbox_workload_state_prefix}*"
     },
     {
       Sid      = "UseOnlyTheStateEncryptionKey"
@@ -121,6 +154,36 @@ locals {
       "kms:GetKeyRotationStatus",
       "kms:ListAliases",
       "kms:ListResourceTags",
+      "tag:GetResources",
+    ]
+    Resource = "*"
+  }
+
+  sandbox_workload_read_statement = {
+    Sid    = "ReadSandboxWorkloadResources"
+    Effect = "Allow"
+    Action = [
+      "application-autoscaling:Describe*",
+      "cognito-idp:DescribeUserPool",
+      "cognito-idp:DescribeUserPoolClient",
+      "cognito-idp:ListUserPoolClients",
+      "dynamodb:DescribeTable",
+      "dynamodb:ListTagsOfResource",
+      "ec2:Describe*",
+      "ecs:DescribeClusters",
+      "ecs:DescribeServices",
+      "ecs:DescribeTaskDefinition",
+      "ecs:ListServices",
+      "ecs:ListTagsForResource",
+      "ecs:ListTaskDefinitions",
+      "iam:GetRole",
+      "iam:GetRolePolicy",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListRolePolicies",
+      "kms:DescribeKey",
+      "kms:ListResourceTags",
+      "logs:DescribeLogGroups",
+      "logs:ListTagsForResource",
       "tag:GetResources",
     ]
     Resource = "*"
@@ -337,6 +400,104 @@ locals {
     ])
   }
 
+  sandbox_workload_plan_policy = {
+    Version   = "2012-10-17"
+    Statement = concat(local.sandbox_workload_state_statements, [local.sandbox_workload_read_statement])
+  }
+
+  sandbox_workload_dev_apply_policy = {
+    Version = "2012-10-17"
+    Statement = concat(local.sandbox_workload_state_statements, [
+      local.sandbox_workload_read_statement,
+      {
+        Sid    = "ManagePrivateSandboxWorkloadSecurityGroups"
+        Effect = "Allow"
+        Action = [
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateTags",
+          "ec2:DeleteSecurityGroup",
+          "ec2:DeleteTags",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "ManageOnlySandboxWorkloadLogs"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:TagResource", "logs:UntagResource"]
+        Resource = "arn:${data.aws_partition.current.partition}:logs:${var.aws_region}:${var.aws_account_id}:log-group:/aws/ecs/sandbox-workload-dev/*"
+      },
+      {
+        Sid    = "ManagePrivateSandboxWorkloadTaskDefinitionsAndServices"
+        Effect = "Allow"
+        Action = [
+          "ecs:CreateService",
+          "ecs:DeleteService",
+          "ecs:DeregisterTaskDefinition",
+          "ecs:RegisterTaskDefinition",
+          "ecs:TagResource",
+          "ecs:UntagResource",
+          "ecs:UpdateService",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ManageSandboxWorkloadAutoscaling"
+        Effect = "Allow"
+        Action = [
+          "application-autoscaling:DeleteScalingPolicy",
+          "application-autoscaling:DeregisterScalableTarget",
+          "application-autoscaling:PutScalingPolicy",
+          "application-autoscaling:RegisterScalableTarget",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ManageOnlySandboxWorkloadTaskRoles"
+        Effect = "Allow"
+        Action = [
+          "iam:AttachRolePolicy",
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:DeleteRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:GetRole",
+          "iam:GetRolePolicy",
+          "iam:ListAttachedRolePolicies",
+          "iam:ListRolePolicies",
+          "iam:PutRolePolicy",
+          "iam:TagRole",
+          "iam:UntagRole",
+        ]
+        Resource = "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/ecs/sandbox-workload-dev-*"
+      },
+      {
+        Sid      = "PassOnlySandboxWorkloadTaskRolesToEcs"
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/ecs/sandbox-workload-dev-*"
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      },
+      {
+        Sid    = "ManageSandboxWorkloadCognitoClients"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:CreateUserPoolClient",
+          "cognito-idp:DeleteUserPoolClient",
+          "cognito-idp:UpdateUserPoolClient",
+        ]
+        Resource = "arn:${data.aws_partition.current.partition}:cognito-idp:${var.aws_region}:${var.aws_account_id}:userpool/*"
+      },
+    ])
+  }
+
   identity_state_statements = [
     {
       Sid      = "ListOnlySandboxDeliveryIdentityStatePrefix"
@@ -413,6 +574,20 @@ locals {
         Effect   = "Allow"
         Action   = ["iam:CreatePolicyVersion", "iam:DeletePolicyVersion", "iam:TagPolicy", "iam:UntagPolicy"]
         Resource = values(local.policy_arns)
+      },
+      {
+        Sid      = "CreateOnlySandboxWorkloadDeliveryPolicies"
+        Effect   = "Allow"
+        Action   = "iam:CreatePolicy"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "iam:PolicyName" = [
+              local.policy_names.sandbox_workload_plan,
+              local.policy_names.sandbox_workload_dev_apply,
+            ]
+          }
+        }
       },
       {
         Sid      = "ManageOnlyReviewedSandboxDeliveryPolicyAttachments"

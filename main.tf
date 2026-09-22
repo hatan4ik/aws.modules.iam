@@ -95,6 +95,8 @@ locals {
     sandbox_network_dev_apply  = "${var.role_prefix}-sandbox-network-dev-apply"
     sandbox_platform_plan      = "${var.role_prefix}-sandbox-platform-plan"
     sandbox_platform_dev_apply = "${var.role_prefix}-sandbox-platform-dev-apply"
+    sandbox_workload_plan      = "${var.role_prefix}-sandbox-workload-plan"
+    sandbox_workload_dev_apply = "${var.role_prefix}-sandbox-workload-dev-apply"
     identity_plan              = "${var.role_prefix}-sandbox-delivery-identity-plan"
     identity_dev_apply         = "${var.role_prefix}-sandbox-delivery-identity-dev-apply"
   }
@@ -128,6 +130,18 @@ locals {
     platform_apply_to_dev_apply = {
       role_name  = local.github_role_names.dev_apply
       policy_arn = local.policy_arns.sandbox_platform_dev_apply
+    }
+    workload_plan_to_plan = {
+      role_name  = local.github_role_names.plan
+      policy_arn = local.policy_arns.sandbox_workload_plan
+    }
+    workload_plan_to_drift = {
+      role_name  = local.github_role_names.drift
+      policy_arn = local.policy_arns.sandbox_workload_plan
+    }
+    workload_apply_to_dev_apply = {
+      role_name  = local.github_role_names.dev_apply
+      policy_arn = local.policy_arns.sandbox_workload_dev_apply
     }
     identity_plan_to_plan = {
       role_name  = local.github_role_names.plan
@@ -212,6 +226,26 @@ resource "aws_iam_policy" "sandbox_platform_dev_apply" {
   name        = local.policy_names.sandbox_platform_dev_apply
   description = "Root-specific platform provisioning and state access for the protected sandbox dev environment."
   policy      = jsonencode(local.sandbox_platform_dev_apply_policy)
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_iam_policy" "sandbox_workload_plan" {
+  name        = local.policy_names.sandbox_workload_plan
+  description = "Read and state-lock access required to plan or detect drift for the sandbox-workload root."
+  policy      = jsonencode(local.sandbox_workload_plan_policy)
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_iam_policy" "sandbox_workload_dev_apply" {
+  name        = local.policy_names.sandbox_workload_dev_apply
+  description = "Root-specific private ECS workload provisioning and state access for protected sandbox dev."
+  policy      = jsonencode(local.sandbox_workload_dev_apply_policy)
 
   lifecycle {
     prevent_destroy = true

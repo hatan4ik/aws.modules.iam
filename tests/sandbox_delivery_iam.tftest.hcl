@@ -27,8 +27,21 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
   command = plan
 
   assert {
-    condition     = length(aws_iam_role_policy_attachment.delivery) == 9
+    condition     = length(aws_iam_role_policy_attachment.delivery) == 12
     error_message = "Terraform must own every sandbox delivery policy attachment, including plan, drift, and protected dev apply."
+  }
+
+  assert {
+    condition     = aws_iam_policy.sandbox_workload_plan.name == "devops-aws-infra-sandbox-sandbox-workload-plan"
+    error_message = "The workload plan policy name must remain stable and independently auditable."
+  }
+
+  assert {
+    condition = anytrue([
+      for statement in jsondecode(aws_iam_policy.sandbox_workload_dev_apply.policy).Statement :
+      statement.Sid == "PassOnlySandboxWorkloadTaskRolesToEcs" ? statement.Condition.StringEquals["iam:PassedToService"] == "ecs-tasks.amazonaws.com" : false
+    ])
+    error_message = "The workload apply role may pass only workload task roles to ECS tasks."
   }
 
   assert {
