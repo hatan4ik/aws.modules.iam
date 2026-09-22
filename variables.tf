@@ -28,6 +28,26 @@ variable "github_oidc_thumbprints" {
   nullable    = false
 }
 
+variable "image_publishers" {
+  description = "Dedicated GitHub OIDC image-publisher roles. Each role can push only immutable images to its declared ECR repository."
+  type = map(object({
+    github_subject  = string
+    repository_name = string
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for key, publisher in var.image_publishers :
+      can(regex("^[a-z][a-z0-9-]{1,25}$", key)) &&
+      can(regex("^repo:.+:environment:dev$", publisher.github_subject)) &&
+      can(regex("^[a-z0-9][a-z0-9._/-]{0,255}$", publisher.repository_name))
+    ])
+    error_message = "Each image publisher needs a short lowercase key, a dev-environment GitHub OIDC subject, and a valid ECR repository name."
+  }
+}
+
 variable "state_backend" {
   description = "Non-secret, dedicated remote-state configuration for the sandbox delivery IAM root."
   type = object({

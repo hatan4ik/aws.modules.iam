@@ -543,11 +543,14 @@ locals {
       "iam:GetPolicy",
       "iam:GetPolicyVersion",
       "iam:GetRole",
+      "iam:GetRolePolicy",
       "iam:ListAttachedRolePolicies",
       "iam:ListEntitiesForPolicy",
       "iam:ListPolicies",
       "iam:ListPolicyTags",
       "iam:ListPolicyVersions",
+      "iam:ListRolePolicies",
+      "iam:ListRoleTags",
     ]
     Resource = "*"
   }
@@ -606,6 +609,23 @@ locals {
         Effect   = "Allow"
         Action   = ["iam:AddClientIDToOpenIDConnectProvider", "iam:RemoveClientIDFromOpenIDConnectProvider", "iam:TagOpenIDConnectProvider", "iam:UntagOpenIDConnectProvider", "iam:UpdateOpenIDConnectProviderThumbprint"]
         Resource = local.github_oidc_provider_arn
+      },
+      ], length(local.image_publisher_role_arns) == 0 ? [] : [
+      {
+        Sid    = "ManageOnlyReviewedSandboxImagePublisherRoles"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:DeleteRolePolicy",
+          "iam:PutRolePolicy",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:UpdateAssumeRolePolicy",
+          "iam:UpdateRole",
+          "iam:UpdateRoleDescription",
+        ]
+        Resource = values(local.image_publisher_role_arns)
       },
     ])
   }

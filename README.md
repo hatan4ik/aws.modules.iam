@@ -37,7 +37,11 @@ No modules.
 | [aws_iam_policy.sandbox_network_plan](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.sandbox_platform_dev_apply](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.sandbox_platform_plan](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
+| [aws_iam_policy.sandbox_workload_dev_apply](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
+| [aws_iam_policy.sandbox_workload_plan](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_role.github_actions](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role.image_publisher](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy.image_publisher](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.delivery](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_partition.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/partition) | data source |
 
@@ -49,6 +53,7 @@ No modules.
 | <a name="input_aws_region"></a> [aws\_region](#input\_aws\_region) | Region containing the sandbox delivery Terraform state backend. | `string` | n/a | yes |
 | <a name="input_github_oidc_thumbprints"></a> [github\_oidc\_thumbprints](#input\_github\_oidc\_thumbprints) | Current approved SHA-1 thumbprints for GitHub's OIDC provider. | `set(string)` | n/a | yes |
 | <a name="input_github_subject_prefix"></a> [github\_subject\_prefix](#input\_github\_subject\_prefix) | Immutable GitHub OIDC repository subject prefix, without the pull-request/ref/environment suffix. | `string` | n/a | yes |
+| <a name="input_image_publishers"></a> [image\_publishers](#input\_image\_publishers) | Dedicated GitHub OIDC image-publisher roles. Each role can push only immutable images to its declared ECR repository. | <pre>map(object({<br/>    github_subject  = string<br/>    repository_name = string<br/>  }))</pre> | `{}` | no |
 | <a name="input_role_prefix"></a> [role\_prefix](#input\_role\_prefix) | Existing GitHub OIDC role-name prefix created by the one-time trust bootstrap. | `string` | n/a | yes |
 | <a name="input_state_backend"></a> [state\_backend](#input\_state\_backend) | Non-secret, dedicated remote-state configuration for the sandbox delivery IAM root. | <pre>object({<br/>    bucket_name     = string<br/>    key_prefix      = string<br/>    kms_key_id      = string<br/>    lock_table_name = string<br/>  })</pre> | n/a | yes |
 
@@ -57,6 +62,7 @@ No modules.
 | Name | Description |
 | ---- | ----------- |
 | <a name="output_github_oidc_provider_arn"></a> [github\_oidc\_provider\_arn](#output\_github\_oidc\_provider\_arn) | Terraform-owned GitHub Actions OIDC provider ARN. |
+| <a name="output_image_publisher_role_arns"></a> [image\_publisher\_role\_arns](#output\_image\_publisher\_role\_arns) | Dedicated GitHub OIDC role ARNs that can push only to their declared ECR repositories. |
 | <a name="output_policy_arns"></a> [policy\_arns](#output\_policy\_arns) | ARNs of the Terraform-owned sandbox delivery policies. |
 | <a name="output_role_arns"></a> [role\_arns](#output\_role\_arns) | Existing GitHub OIDC roles that receive the reviewed delivery policies. |
 <!-- END_TF_DOCS -->
