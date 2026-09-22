@@ -133,15 +133,15 @@ locals {
     }
     workload_plan_to_plan = {
       role_name  = local.github_role_names.plan
-      policy_arn = local.policy_arns.sandbox_workload_plan
+      policy_arn = aws_iam_policy.sandbox_workload_plan.arn
     }
     workload_plan_to_drift = {
       role_name  = local.github_role_names.drift
-      policy_arn = local.policy_arns.sandbox_workload_plan
+      policy_arn = aws_iam_policy.sandbox_workload_plan.arn
     }
     workload_apply_to_dev_apply = {
       role_name  = local.github_role_names.dev_apply
-      policy_arn = local.policy_arns.sandbox_workload_dev_apply
+      policy_arn = aws_iam_policy.sandbox_workload_dev_apply.arn
     }
     identity_plan_to_plan = {
       role_name  = local.github_role_names.plan
