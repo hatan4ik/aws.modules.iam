@@ -472,6 +472,7 @@ locals {
           "application-autoscaling:DeregisterScalableTarget",
           "application-autoscaling:PutScalingPolicy",
           "application-autoscaling:RegisterScalableTarget",
+          "application-autoscaling:TagResource",
         ]
         Resource = "*"
       },
