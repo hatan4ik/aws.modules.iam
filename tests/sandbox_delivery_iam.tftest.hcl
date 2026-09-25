@@ -88,6 +88,14 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
 
   assert {
     condition = anytrue([
+      for statement in jsondecode(aws_iam_policy.sandbox_network_dev_apply.policy).Statement :
+      statement.Sid == "ManageDedicatedSandboxNetworkFlowLogKey" ? contains(statement.Action, "kms:DeleteAlias") && statement.Condition.StringEquals["aws:ResourceTag/Root"] == "sandbox-network" : false
+    ])
+    error_message = "The network apply role must have KMS-key authorization to delete only aliases on Terraform-owned sandbox-network keys."
+  }
+
+  assert {
+    condition = anytrue([
       for statement in jsondecode(aws_iam_policy.sandbox_platform_dev_apply.policy).Statement :
       statement.Sid == "ManageDedicatedSandboxPlatformDataAlias" ? statement.Resource == "arn:aws:kms:us-east-2:448871779014:alias/sandbox-platform-dev-application-data" : false
     ])

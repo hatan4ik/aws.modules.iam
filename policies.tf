@@ -281,6 +281,7 @@ locals {
         Effect = "Allow"
         Action = [
           "kms:CreateAlias",
+          "kms:DeleteAlias",
           "kms:DescribeKey",
           "kms:EnableKeyRotation",
           "kms:GetKeyPolicy",
