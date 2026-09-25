@@ -79,6 +79,22 @@ run "plans_all_sandbox_delivery_policies_and_only_reviewed_attachments" {
   }
 
   assert {
+    condition = anytrue([
+      for statement in jsondecode(aws_iam_policy.sandbox_platform_dev_apply.policy).Statement :
+      statement.Sid == "ManageDedicatedSandboxPlatformDataKey" ? contains(statement.Action, "kms:DeleteAlias") && statement.Condition.StringEquals["aws:ResourceTag/Root"] == "sandbox-platform" : false
+    ])
+    error_message = "The platform apply role must have KMS-key authorization to delete only aliases on Terraform-owned sandbox-platform keys."
+  }
+
+  assert {
+    condition = anytrue([
+      for statement in jsondecode(aws_iam_policy.sandbox_platform_dev_apply.policy).Statement :
+      statement.Sid == "ManageDedicatedSandboxPlatformDataAlias" ? statement.Resource == "arn:aws:kms:us-east-2:448871779014:alias/sandbox-platform-dev-application-data" : false
+    ])
+    error_message = "The platform apply role must retain the exact application-data alias scope."
+  }
+
+  assert {
     condition     = aws_iam_policy.sandbox_platform_plan.name == "devops-aws-infra-sandbox-sandbox-platform-plan"
     error_message = "The platform plan policy name must remain stable for zero-change CloudFormation adoption."
   }
