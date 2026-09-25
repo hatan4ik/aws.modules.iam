@@ -351,7 +351,7 @@ locals {
       {
         Sid      = "ManageSandboxContainerRegistry"
         Effect   = "Allow"
-        Action   = ["ecr:CreateRepository", "ecr:DeleteLifecyclePolicy", "ecr:DeleteRepository", "ecr:PutImageScanningConfiguration", "ecr:PutImageTagMutability", "ecr:PutLifecyclePolicy", "ecr:TagResource", "ecr:UntagResource"]
+        Action   = ["ecr:BatchDeleteImage", "ecr:CreateRepository", "ecr:DeleteLifecyclePolicy", "ecr:DeleteRepository", "ecr:PutImageScanningConfiguration", "ecr:PutImageTagMutability", "ecr:PutLifecyclePolicy", "ecr:TagResource", "ecr:UntagResource"]
         Resource = "*"
       },
       {
