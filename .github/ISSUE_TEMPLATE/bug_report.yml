@@ -1,0 +1,96 @@
+name: Bug report
+description: A role, policy, the OIDC provider, a validation, or an output behaves differently from what the module documents.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This module controls who can authenticate as GitHub Actions in this platform. Redact account IDs, ARNs, role/policy names, and GitHub organization or repository names before pasting configuration or output.
+  - type: input
+    id: module-version
+    attributes:
+      label: Module version or commit
+      description: The tag or commit SHA pinned in your module `source` / `ref`.
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: terraform-version
+    attributes:
+      label: Terraform version
+      description: Output of `terraform version`.
+      placeholder: 1.7.5
+    validations:
+      required: true
+  - type: input
+    id: provider-version
+    attributes:
+      label: AWS provider version
+      description: The `hashicorp/aws` version recorded in your `.terraform.lock.hcl`.
+      placeholder: 6.66.0
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - OIDC provider or the six fixed roles (oidc.tf)
+        - image-publisher roles (image_publishers.tf)
+        - delivery policy resources (delivery_policies.tf)
+        - policy documents (policies.tf)
+        - role-to-policy attachments (attachments.tf)
+        - advisory checks (checks.tf)
+        - shared names or ARNs (locals.tf)
+        - examples
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest module call that reproduces the problem. Use placeholder account IDs, ARNs, and repository names.
+      render: hcl
+      placeholder: |
+        module "sandbox_delivery_iam" {
+          source = "git::https://github.com/hatan4ik/aws.modules.iam.git?ref=v1.0.0"
+
+          aws_account_id = "111122223333"
+          aws_region     = "us-east-2"
+          role_prefix    = "example-sandbox"
+          # ...
+        }
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Plan output
+      description: Relevant `terraform plan` output, with account IDs, ARNs, role/policy names, and GitHub identifiers redacted. Never paste `terraform apply` output or any AWS credential.
+      render: shell
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I redacted account IDs, ARNs, role and policy names, and GitHub organization or repository names from everything above.
+          required: true
+        - label: I did not run `terraform apply` to investigate this, and I am not pasting apply output.
+          required: true
+        - label: I searched existing issues for this problem.
+          required: true

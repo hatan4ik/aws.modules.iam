@@ -1,0 +1,7 @@
+# This module has no examples with real Terraform, no submodules, and no
+# tests/integration/ directory (see CONTRIBUTING.md, "No integration suite,
+# ever, without review first"), so there is nothing to exclude by path today.
+# A suppression is added here only after being proven (a standalone scan
+# passes; CI's composed-path scan still fails) per the platform's known
+# Checkov false-positive trap, with a per-check comment explaining why.
+skip-path: []

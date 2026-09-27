@@ -1,0 +1,70 @@
+name: Feature request
+description: Propose a new input, output, or behaviour for the module.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read `docs/DESIGN.md`'s "Deferred to v2" section first: several changes that look easy (fixing the `sandbox-sandbox` policy-name stutter, giving `drift` its own GitHub environment) are already known and deliberately not implemented, because they would rename, move, or re-scope a real IAM identity `sandbox-delivery` depends on today. If your proposal is already listed there, this issue should discuss the migration plan, not ask for the change to just be made.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do with the module today, and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: interface
+    attributes:
+      label: Proposed interface
+      description: The variables, outputs, or resources you expect, written as HCL.
+      render: hcl
+      placeholder: |
+        variable "example" {
+          description = "..."
+          type        = string
+          default     = null
+        }
+    validations:
+      required: true
+  - type: dropdown
+    id: identity-impact
+    attributes:
+      label: Does this rename, move, or re-scope any existing role, policy, or the OIDC provider?
+      description: Be exact. "No" means sandbox-delivery's real terraform.tfvars would plan with no changes after this ships.
+      options:
+        - "No: purely additive (a new optional input, output, or opt-in resource)"
+        - "Yes: it would need a live migration (moved blocks, a coordinated GitHub-side change, or both)"
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Where does it belong?
+      options:
+        - OIDC provider or the six fixed roles (oidc.tf)
+        - image-publisher roles (image_publishers.tf)
+        - delivery policy resources (delivery_policies.tf)
+        - policy documents (policies.tf)
+        - role-to-policy attachments (attachments.tf)
+        - advisory checks (checks.tf)
+        - a new example
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, such as a policy change reviewed and applied outside this module.
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Design constraints
+      options:
+        - label: The proposal does not require the module to add data sources beyond data.aws_partition.current.
+        - label: The proposal is backwards compatible, or the migration it needs is described above.
+        - label: The proposal does not ask for a new integration suite without discussing why it would be safe first.
