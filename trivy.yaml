@@ -1,0 +1,5 @@
+# This module has no examples with real Terraform, no submodules, and no
+# tests/integration/ directory (see CONTRIBUTING.md, "No integration suite,
+# ever, without review first"), so there is nothing to exclude by path today.
+scan:
+  skip-dirs: []
