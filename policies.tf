@@ -1,7 +1,12 @@
 locals {
-  sandbox_network_state_prefix  = "gitops/sandbox-network/us-east-2/dev/"
-  sandbox_platform_state_prefix = "gitops/sandbox-platform/us-east-2/dev/"
-  sandbox_workload_state_prefix = "gitops/sandbox-workload/us-east-2/dev/"
+  # The sandbox roots these policies serve live in var.aws_region (every other
+  # ARN in this file already uses it) and exist only in the dev environment
+  # (hence the dev_apply policies and the "-dev" resource names below).
+  sandbox_state_environment = "dev"
+
+  sandbox_network_state_prefix  = "gitops/sandbox-network/${var.aws_region}/${local.sandbox_state_environment}/"
+  sandbox_platform_state_prefix = "gitops/sandbox-platform/${var.aws_region}/${local.sandbox_state_environment}/"
+  sandbox_workload_state_prefix = "gitops/sandbox-workload/${var.aws_region}/${local.sandbox_state_environment}/"
 
   sandbox_network_state_statements = [
     {
@@ -98,6 +103,116 @@ locals {
       Resource = local.state_lock_table_arn
     },
   ]
+
+  # Plan and drift only ever READ state, so their policies get these
+  # read-only variants instead of the apply roles' *_state_statements above:
+  # s3:GetObject without s3:PutObject. They still need Terraform's DynamoDB
+  # lock, because every plan/drift/destroy-plan workflow runs with locking on
+  # (-lock-timeout=5m) and the S3 backend releases its lock with
+  # dynamodb:DeleteItem; removing DeleteItem outright would leave every plan's
+  # lock behind and block the next apply. Instead every item-level lock-table
+  # action is pinned with dynamodb:LeadingKeys to this root's own LockID and
+  # digest keys ("<bucket>/<state key>" and "<bucket>/<state key>-md5"), so a
+  # plan credential cannot touch another root's lock entries.
+  state_kms_key_statement = {
+    Sid      = "UseOnlyTheStateEncryptionKey"
+    Effect   = "Allow"
+    Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey"]
+    Resource = local.state_kms_key_arn
+  }
+
+  state_lock_table_describe_statement = {
+    Sid      = "DescribeOnlyTheDedicatedStateTable"
+    Effect   = "Allow"
+    Action   = "dynamodb:DescribeTable"
+    Resource = local.state_lock_table_arn
+  }
+
+  plan_state_lock_statements = {
+    for root, prefix in {
+      SandboxNetwork          = local.sandbox_network_state_prefix
+      SandboxPlatform         = local.sandbox_platform_state_prefix
+      SandboxWorkload         = local.sandbox_workload_state_prefix
+      SandboxDeliveryIdentity = var.state_backend.key_prefix
+    } :
+    root => [
+      local.state_lock_table_describe_statement,
+      {
+        Sid      = "LockOnlyThe${root}StateKeys"
+        Effect   = "Allow"
+        Action   = ["dynamodb:DeleteItem", "dynamodb:GetItem", "dynamodb:PutItem"]
+        Resource = local.state_lock_table_arn
+        Condition = {
+          "ForAllValues:StringLike" = {
+            "dynamodb:LeadingKeys" = ["${var.state_backend.bucket_name}/${prefix}*"]
+          }
+        }
+      },
+    ]
+  }
+
+  sandbox_network_plan_state_statements = concat([
+    {
+      Sid      = "ListOnlyTheSandboxNetworkStatePrefix"
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = local.state_bucket_arn
+      Condition = {
+        StringLike = {
+          "s3:prefix" = "${local.sandbox_network_state_prefix}*"
+        }
+      }
+    },
+    {
+      Sid      = "ReadOnlyTheSandboxNetworkStateObject"
+      Effect   = "Allow"
+      Action   = "s3:GetObject"
+      Resource = "${local.state_bucket_arn}/${local.sandbox_network_state_prefix}*"
+    },
+    local.state_kms_key_statement,
+  ], local.plan_state_lock_statements.SandboxNetwork)
+
+  sandbox_platform_plan_state_statements = concat([
+    {
+      Sid      = "ListOnlySandboxPlatformStatePrefix"
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = local.state_bucket_arn
+      Condition = {
+        StringLike = {
+          "s3:prefix" = "${local.sandbox_platform_state_prefix}*"
+        }
+      }
+    },
+    {
+      Sid      = "ReadOnlySandboxPlatformStateObject"
+      Effect   = "Allow"
+      Action   = "s3:GetObject"
+      Resource = "${local.state_bucket_arn}/${local.sandbox_platform_state_prefix}*"
+    },
+    local.state_kms_key_statement,
+  ], local.plan_state_lock_statements.SandboxPlatform)
+
+  sandbox_workload_plan_state_statements = concat([
+    {
+      Sid      = "ListOnlySandboxWorkloadStatePrefix"
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = local.state_bucket_arn
+      Condition = {
+        StringLike = {
+          "s3:prefix" = "${local.sandbox_workload_state_prefix}*"
+        }
+      }
+    },
+    {
+      Sid      = "ReadOnlySandboxWorkloadStateObject"
+      Effect   = "Allow"
+      Action   = "s3:GetObject"
+      Resource = "${local.state_bucket_arn}/${local.sandbox_workload_state_prefix}*"
+    },
+    local.state_kms_key_statement,
+  ], local.plan_state_lock_statements.SandboxWorkload)
 
   sandbox_platform_state_read_statements = [
     {
@@ -218,7 +333,7 @@ locals {
 
   sandbox_network_plan_policy = {
     Version   = "2012-10-17"
-    Statement = concat(local.sandbox_network_state_statements, [local.sandbox_network_read_statement])
+    Statement = concat(local.sandbox_network_plan_state_statements, [local.sandbox_network_read_statement])
   }
 
   sandbox_network_dev_apply_policy = {
@@ -324,7 +439,7 @@ locals {
 
   sandbox_platform_plan_policy = {
     Version   = "2012-10-17"
-    Statement = concat(local.sandbox_platform_state_statements, [local.sandbox_platform_read_statement])
+    Statement = concat(local.sandbox_platform_plan_state_statements, [local.sandbox_platform_read_statement])
   }
 
   sandbox_platform_dev_apply_policy = {
@@ -431,7 +546,7 @@ locals {
 
   sandbox_workload_plan_policy = {
     Version = "2012-10-17"
-    Statement = concat(local.sandbox_workload_state_statements, local.sandbox_platform_state_read_statements, [
+    Statement = concat(local.sandbox_workload_plan_state_statements, local.sandbox_platform_state_read_statements, [
       local.sandbox_workload_read_statement,
       local.sandbox_workload_autoscaling_tag_read_statement,
     ])
@@ -581,6 +696,33 @@ locals {
     },
   ]
 
+  identity_plan_state_statements = concat([
+    {
+      Sid      = "ListOnlySandboxDeliveryIdentityStatePrefix"
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = local.state_bucket_arn
+      Condition = {
+        StringLike = {
+          "s3:prefix" = "${var.state_backend.key_prefix}*"
+        }
+      }
+    },
+    {
+      Sid      = "ReadSandboxDeliveryStateBucketEncryption"
+      Effect   = "Allow"
+      Action   = "s3:GetEncryptionConfiguration"
+      Resource = local.state_bucket_arn
+    },
+    {
+      Sid      = "ReadOnlySandboxDeliveryIdentityStateObject"
+      Effect   = "Allow"
+      Action   = "s3:GetObject"
+      Resource = local.state_object_arn
+    },
+    local.state_kms_key_statement,
+  ], local.plan_state_lock_statements.SandboxDeliveryIdentity)
+
   identity_read_statement = {
     Sid    = "ReadSandboxDeliveryIdentity"
     Effect = "Allow"
@@ -609,7 +751,7 @@ locals {
 
   identity_plan_policy = {
     Version   = "2012-10-17"
-    Statement = concat(local.identity_state_statements, [local.identity_read_statement, local.identity_oidc_provider_read_statement])
+    Statement = concat(local.identity_plan_state_statements, [local.identity_read_statement, local.identity_oidc_provider_read_statement])
   }
 
   identity_dev_apply_policy = {
@@ -638,16 +780,35 @@ locals {
         }
       },
       {
+        # Only this module's own tracked delivery policies may be attached
+        # or detached: without iam:PolicyARN pinned, dev_apply could attach
+        # any policy (AdministratorAccess included) to any delivery role,
+        # itself included.
         Sid      = "ManageOnlyReviewedSandboxDeliveryPolicyAttachments"
         Effect   = "Allow"
         Action   = ["iam:AttachRolePolicy", "iam:DetachRolePolicy"]
         Resource = values(local.github_role_arns)
+        Condition = {
+          ArnEquals = {
+            "iam:PolicyARN" = values(local.policy_arns)
+          }
+        }
       },
       {
         Sid      = "ManageOnlyReviewedSandboxOidcRoles"
         Effect   = "Allow"
-        Action   = ["iam:TagRole", "iam:UntagRole", "iam:UpdateAssumeRolePolicy", "iam:UpdateRole", "iam:UpdateRoleDescription"]
+        Action   = ["iam:TagRole", "iam:UntagRole", "iam:UpdateRole", "iam:UpdateRoleDescription"]
         Resource = values(local.github_role_arns)
+      },
+      {
+        # Trust-policy rewrites are limited to the sandbox dev delivery
+        # roles. dev_apply must never be able to change who can assume
+        # staging_apply, prod_apply, or landing_zone; a trust change to those
+        # roles needs a separately authorized apply.
+        Sid      = "UpdateTrustOnlyForSandboxDevDeliveryRoles"
+        Effect   = "Allow"
+        Action   = "iam:UpdateAssumeRolePolicy"
+        Resource = [for key in local.sandbox_dev_delivery_role_keys : local.github_role_arns[key]]
       },
       {
         Sid      = "ManageOnlyTheSandboxGitHubOidcProvider"

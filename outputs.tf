@@ -14,7 +14,7 @@ output "policy_arns" {
 
 output "role_arns" {
   description = "Existing GitHub OIDC roles that receive the reviewed delivery policies."
-  value       = local.github_role_arns
+  value       = { for key, role in aws_iam_role.github_actions : key => role.arn }
 }
 
 output "image_publisher_role_arns" {

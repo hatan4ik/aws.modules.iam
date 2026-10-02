@@ -6,8 +6,9 @@ a reader can see the real call shape without cloning `devops-aws-infra`.
 
 > **Why there is no runnable example here.** Every other `aws.modules.*`
 > module in this platform ships runnable examples that plan or apply against
-> a disposable copy of themselves. This module cannot: every resource it
-> creates carries `lifecycle { prevent_destroy = true }`, and a "disposable"
+> a disposable copy of themselves. This module cannot: its OIDC provider,
+> fixed roles, delivery policies, and attachments carry
+> `lifecycle { prevent_destroy = true }`, and a "disposable"
 > second GitHub OIDC provider or a second set of delivery roles is exactly
 > the kind of uncontrolled IAM sprawl this module exists to prevent — the
 > same reasoning `aws.modules.state` gives for why it must never be applied
