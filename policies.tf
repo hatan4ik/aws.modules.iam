@@ -1,7 +1,12 @@
 locals {
-  sandbox_network_state_prefix  = "gitops/sandbox-network/us-east-2/dev/"
-  sandbox_platform_state_prefix = "gitops/sandbox-platform/us-east-2/dev/"
-  sandbox_workload_state_prefix = "gitops/sandbox-workload/us-east-2/dev/"
+  # The sandbox roots these policies serve live in var.aws_region (every other
+  # ARN in this file already uses it) and exist only in the dev environment
+  # (hence the dev_apply policies and the "-dev" resource names below).
+  sandbox_state_environment = "dev"
+
+  sandbox_network_state_prefix  = "gitops/sandbox-network/${var.aws_region}/${local.sandbox_state_environment}/"
+  sandbox_platform_state_prefix = "gitops/sandbox-platform/${var.aws_region}/${local.sandbox_state_environment}/"
+  sandbox_workload_state_prefix = "gitops/sandbox-workload/${var.aws_region}/${local.sandbox_state_environment}/"
 
   sandbox_network_state_statements = [
     {
