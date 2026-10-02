@@ -2,7 +2,7 @@
 
 The sandbox platform's own delivery identity: one module call creates the GitHub Actions OIDC provider, six fixed environment-scoped roles (`plan`, `dev_apply`, `staging_apply`, `prod_apply`, `drift`, `landing_zone`), opt-in per-repository image-publisher roles, and the reviewed delivery policies (and their attachments) for `sandbox-network`, `sandbox-platform`, `sandbox-workload`, and this module's own root, `identity`. It is consumed today by exactly one caller, `sandbox-delivery`, whose own `apply` role is one of the roles this module creates: GitHub Actions authenticates to every root in this platform, including this one, through credentials this module issues. Requires Terraform >= 1.7 and the AWS provider >= 6.35, < 7.
 
-> **Frozen interface, by design.** Every resource here carries `lifecycle { prevent_destroy = true }`, and there is no console-change escape hatch if a bad change ships (ADR 0022). Because of that, v1.0.0's interface is not just stable, it is **byte-for-byte frozen**: every role name, policy name, role path, trust-policy condition, and decoded policy document is identical to v0.1.13 for the same inputs, proven mechanically in [`tests/golden_master.tftest.hcl`](tests/golden_master.tftest.hcl) against `sandbox-delivery`'s real production inputs. If you are looking for the module that lets you rename or restructure things freely, this is not it — see [docs/DESIGN.md](docs/DESIGN.md) for the full reasoning and everything considered and deliberately not done.
+> **Frozen interface, by design.** The OIDC provider, the six fixed roles, the eight delivery policies, and their attachments all carry `lifecycle { prevent_destroy = true }` (the opt-in image-publisher roles deliberately do not; see Durability below), and there is no console-change escape hatch if a bad change ships (ADR 0022). Because of that, v1.0.0's interface is not just stable, it is **byte-for-byte frozen**: every role name, policy name, role path, trust-policy condition, and decoded policy document is identical to v0.1.13 for the same inputs, proven mechanically in [`tests/golden_master.tftest.hcl`](tests/golden_master.tftest.hcl) against `sandbox-delivery`'s real production inputs. If you are looking for the module that lets you rename or restructure things freely, this is not it — see [docs/DESIGN.md](docs/DESIGN.md) for the full reasoning and everything considered and deliberately not done.
 
 ## Why this module
 
@@ -11,7 +11,7 @@ The sandbox platform's own delivery identity: one module call creates the GitHub
 - **Eight reviewed delivery policies**, one read-only `plan` and one create/update/delete `dev_apply` policy per consuming root (`sandbox-network`, `sandbox-platform`, `sandbox-workload`), plus this module's own `identity_plan`/`identity_dev_apply` pair that lets Terraform manage the other seven policies' versions and the role attachments, bounded to exactly the tracked policy ARNs.
 - **Structurally provable safety.** [`tests/policy_shape.tftest.hcl`](tests/policy_shape.tftest.hcl) asserts, for any valid input, that no rendered policy grants a full-service or global wildcard action (`iam:*`, `*:*`) and that no mutating `iam:` action ever gets an unscoped `Resource = "*"` without a `Condition` narrowing it.
 - **Plan-time validation of every input**: account ID shape, Region shape, IAM-legal characters in `role_prefix`, the GitHub OIDC subject scheme, thumbprint format, and every field of the dedicated `state_backend`. Two `lifecycle.precondition` blocks catch a role name that would exceed IAM's 64-character limit before it reaches the API.
-- **Advisory checks that never block a real run**: a warning if `github_oidc_thumbprints` is empty, and a warning if any role's session duration exceeds the platform's 1-hour ceiling.
+- **An advisory check that never blocks a real run**: a warning if `github_oidc_thumbprints` is empty. Every role's 1-hour `max_session_duration` is a literal, not an input, and is pinned by tests rather than by a check that could never fire.
 - **Zero data sources beyond the AWS partition.** Every account-qualified ARN is derived from the supplied account, Region, partition, and names; callers never repeat an account ID inside a policy document.
 
 ## The one real caller
@@ -29,11 +29,11 @@ root (one call = the whole sandbox delivery identity)
 │                          role-name-length precondition.
 ├── delivery_policies.tf   aws_iam_policy.{sandbox_network,sandbox_platform,sandbox_workload}_{plan,dev_apply},
 │                          aws_iam_policy.identity_{plan,dev_apply}. Documents rendered in policies.tf.
-├── policies.tf            Unmodified from v0.1.13: every policy's jsonencode() document.
+├── policies.tf            Every policy's jsonencode() document.
 ├── attachments.tf         aws_iam_role_policy_attachment.delivery[12 pairs]. The only file that grants
 │                          permission: every role and policy exists with zero effect until attached here.
-├── checks.tf              Advisory checks: github_oidc_thumbprints_present, oidc_role_session_durations_stay_short.
-└── outputs.tf              Unmodified from v0.1.13: policy_arns, role_arns, image_publisher_role_arns,
+├── checks.tf              Advisory check: github_oidc_thumbprints_present.
+└── outputs.tf              policy_arns, role_arns, image_publisher_role_arns,
                             github_oidc_provider_arn.
 ```
 
@@ -48,13 +48,13 @@ Identity
 
 Permissions
 
-- Delivery policies are split into a read-only `plan` policy (state read/lock plus narrow `Describe`/`Get`/`List` reads) and a `dev_apply` policy (the same, plus exactly the create/update/delete actions each root needs, most of them resource-scoped to that root's own state prefix, KMS alias, log group, or role path).
-- The `identity_dev_apply` policy — the one that lets Terraform manage this module's own resources — is itself bounded: it may create policy versions only for the policies this module tracks (`values(local.policy_arns)`), attach or detach only the six fixed roles' policies, and manage the OIDC provider's client ID list and thumbprint, never anything broader.
+- Delivery policies are split into a read-only `plan` policy (state read only — no `s3:PutObject` — plus lock-table item access pinned by `dynamodb:LeadingKeys` to that root's own lock keys, plus narrow `Describe`/`Get`/`List` reads) and a `dev_apply` policy (the same, plus exactly the create/update/delete actions each root needs, most of them resource-scoped to that root's own state prefix, KMS alias, log group, or role path).
+- The `identity_dev_apply` policy — the one that lets Terraform manage this module's own resources — is itself bounded: it may create policy versions only for the policies this module tracks (`values(local.policy_arns)`), attach or detach only this module's own tracked policies (an `ArnEquals` `iam:PolicyARN` condition) on the six fixed roles, rewrite the trust policy of only the `plan`, `dev_apply`, and `drift` roles (never `staging_apply`, `prod_apply`, or `landing_zone`), and manage the OIDC provider's client ID list and thumbprint, never anything broader.
 - `tests/policy_shape.tftest.hcl` asserts structurally, for any valid input, that no statement grants `iam:*`, `*:*`, or an unscoped `Resource = "*"` on a mutating `iam:` action without a `Condition`. The few non-IAM statements that use `Resource = "*"` (for example EC2 security-group management, which AWS gives no resource-level permission for) are pre-existing, frozen behavior, not something this test flags.
 
 Durability
 
-- Every resource carries `lifecycle { prevent_destroy = true }`. `terraform test` cannot see a `lifecycle` block, so this is confirmed by reading the diff directly, not by a test assertion; see [CONTRIBUTING.md](CONTRIBUTING.md).
+- `lifecycle { prevent_destroy = true }` is on the OIDC provider, the six fixed roles, the eight delivery policies, and the twelve attachments. The opt-in image-publisher roles (`aws_iam_role.image_publisher`) and their inline policies (`aws_iam_role_policy.image_publisher`) deliberately do not carry it: removing an `image_publishers` entry is supposed to delete that publisher's role, and nothing else in the platform authenticates through it. `terraform test` cannot see a `lifecycle` block, so this is confirmed by reading the diff directly, not by a test assertion; see [CONTRIBUTING.md](CONTRIBUTING.md).
 - There is deliberately no integration suite: this module has no safe way to create a disposable copy of itself, and `prevent_destroy` means a mistaken apply cannot be cleaned up by `terraform destroy` either. See "Testing" below.
 
 Not created here
@@ -66,7 +66,7 @@ Not created here
 - Nothing here is designed to change often. A role's trust condition, name, or path is not exposed as an input at all; the only inputs that shape identity are `role_prefix`, `github_subject_prefix`, `github_oidc_thumbprints`, and `image_publishers`, and every one of them is validated at plan time.
 - `github_oidc_thumbprints` accepts more than one entry specifically to support a rotation window: add the new thumbprint, apply, confirm, then remove the old one in a second apply.
 - `depends_on = [aws_iam_policy.identity_dev_apply]` on the two workload delivery policies is unchanged from v0.1.13, kept for the bootstrap ordering it was written for; see docs/DESIGN.md's "Deferred to v2" for why it was not removed even though it looks safe to.
-- Two advisory `check` blocks warn without blocking: `github_oidc_thumbprints_present` and `oidc_role_session_durations_stay_short`.
+- One advisory `check` block warns without blocking: `github_oidc_thumbprints_present`. (v1.0.0 also shipped `oidc_role_session_durations_stay_short`; it was removed because `max_session_duration` is a literal 3600, so it could never fire. `tests/oidc.tftest.hcl` pins the literal for both role kinds instead.)
 
 ## Testing
 

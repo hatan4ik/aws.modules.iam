@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+Security fix release. Only policy-document content changes: no role name, role path, trust-policy condition, policy name, or attachment changes. `tests/golden_master.tftest.hcl` was updated deliberately for the five narrowed documents (see its header); every other document is still byte-for-byte the v0.1.13 render.
+
+### Security
+
+- **Plan policies can no longer write state.** `sandbox_network_plan`, `sandbox_platform_plan`, `sandbox_workload_plan`, and `identity_plan` (attached to the `pull_request`-trusted `plan` role and to `drift`) no longer grant `s3:PutObject`. Their lock-table grant is split into `dynamodb:DescribeTable` and a `DeleteItem`/`GetItem`/`PutItem` statement pinned by `dynamodb:LeadingKeys` to that root's own `<bucket>/<state prefix>*` lock and digest keys (`UpdateItem` dropped). `DeleteItem` is kept, scoped, because plan and drift run with state locking on and Terraform's S3 backend releases its DynamoDB lock with `DeleteItem`. The apply policies are unchanged.
+- **`identity_dev_apply` can no longer attach arbitrary policies.** `iam:AttachRolePolicy`/`iam:DetachRolePolicy` now require an `ArnEquals` `iam:PolicyARN` in this module's eight tracked policy ARNs, so `dev_apply` cannot attach `AdministratorAccess` (or anything else) to any delivery role, itself included.
+- **`identity_dev_apply` can no longer rewrite non-dev trust policies.** `iam:UpdateAssumeRolePolicy` moved into its own statement, `UpdateTrustOnlyForSandboxDevDeliveryRoles`, scoped to the `plan`, `dev_apply`, and `drift` roles; it no longer covers `staging_apply`, `prod_apply`, or `landing_zone`.
+
+### Fixed
+
+- `aws_iam_role_policy_attachment.delivery` now depends on the roles (via `aws_iam_role.github_actions[...].name`) and on every delivery policy (explicit `depends_on`), so a fresh disaster-recovery apply cannot race an attachment ahead of its role or policy (`NoSuchEntity`). The `role_arns` output now reads `aws_iam_role.github_actions[*].arn`. Rendered values are unchanged.
+- `oidc.tf` uses `local.github_role_names` for the role name and its length precondition instead of recomputing it twice.
+- The three sandbox state-prefix locals take the Region from `var.aws_region` instead of hardcoding `us-east-2`, like every other ARN in `policies.tf`.
+- README, `docs/DESIGN.md`, `SECURITY.md`, `CONTRIBUTING.md`, and the example README now state accurately which resources carry `prevent_destroy`: the image-publisher roles and their inline policies deliberately do not.
+
+### Removed
+
+- The `oidc_role_session_durations_stay_short` advisory check. `max_session_duration` is a literal `3600`, not an input, so the check could never fire; `tests/oidc.tftest.hcl` now asserts the literal for both the fixed and the image-publisher roles.
+
 ## [1.0.0] - 2026-09-27
 
 Non-breaking release, in the strictest sense this module can offer: every role name, policy name, role path, trust-policy condition, and decoded policy document is byte-for-byte identical to v0.1.13 for the same inputs, proven in [`tests/golden_master.tftest.hcl`](tests/golden_master.tftest.hcl) against `sandbox-delivery`'s real production inputs and independently re-verified against unmodified v0.1.13. The reasoning is in [docs/DESIGN.md](docs/DESIGN.md); [docs/UPGRADE-1.0.md](docs/UPGRADE-1.0.md) confirms there is nothing to change beyond the version pin.

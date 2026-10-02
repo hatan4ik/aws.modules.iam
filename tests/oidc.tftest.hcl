@@ -86,6 +86,29 @@ run "exactly_six_fixed_roles_named_from_role_prefix" {
   }
 }
 
+run "image_publisher_roles_keep_the_one_hour_session_ceiling" {
+  command = plan
+
+  variables {
+    image_publishers = {
+      "auth-demo" = {
+        github_subject  = "repo:acme-corp/sandbox-auth-demo:environment:dev"
+        repository_name = "acme-platform-dev-application"
+      }
+    }
+  }
+
+  # max_session_duration is a literal, not an input, so this pins the
+  # literal itself (replacing the former advisory check, which could never
+  # fire).
+  assert {
+    condition = alltrue([
+      for key, role in aws_iam_role.image_publisher : role.max_session_duration == 3600
+    ]) && length(aws_iam_role.image_publisher) == 1
+    error_message = "Every image-publisher role keeps the 1-hour session ceiling."
+  }
+}
+
 run "plan_role_trusts_both_pull_requests_and_pushes_to_main_only" {
   command = plan
 
