@@ -20,6 +20,28 @@
 # change and, if the improvement is genuinely wanted, record it under
 # "Deferred to v2" in docs/DESIGN.md instead.
 #
+# One deliberate exception since v1.0.0, and only to policy-document content:
+# five decoded policy documents below were narrowed on purpose (security
+# fixes; see CHANGELOG.md "Unreleased"). No role name, role path, trust-policy
+# condition, policy name, or attachment changed. The narrowed documents are:
+#
+#   - sandbox_network_plan, sandbox_platform_plan, sandbox_workload_plan,
+#     identity_plan: s3:PutObject removed from the state-object grant (Sid
+#     ReadAndWrite...StateObject -> ReadOnly...StateObject); the lock-table
+#     grant split into an unconditioned dynamodb:DescribeTable statement and
+#     a DeleteItem/GetItem/PutItem statement pinned by dynamodb:LeadingKeys
+#     to that root's own lock keys (UpdateItem dropped).
+#   - identity_dev_apply: iam:AttachRolePolicy/DetachRolePolicy now carry an
+#     ArnEquals iam:PolicyARN condition limited to this module's eight
+#     tracked policies, and iam:UpdateAssumeRolePolicy moved out of
+#     ManageOnlyReviewedSandboxOidcRoles into its own statement scoped to the
+#     plan, dev_apply, and drift roles only (never staging_apply, prod_apply,
+#     or landing_zone).
+#
+# Every other document is still byte-for-byte the v0.1.13 render. Each
+# narrowing is additionally proven as a property, independent of these
+# pinned values, in tests/policy_shape.tftest.hcl.
+#
 # Trust-policy conditions are asserted against local.github_roles / the
 # image_publishers input rather than the rendered aws_iam_role.*.assume_role_
 # policy attribute: that attribute embeds the OIDC provider's ARN, which is
@@ -323,13 +345,10 @@ run "delivery_policy_documents_network" {
           "Sid": "ListOnlyTheSandboxNetworkStatePrefix"
         },
         {
-          "Action": [
-            "s3:GetObject",
-            "s3:PutObject"
-          ],
+          "Action": "s3:GetObject",
           "Effect": "Allow",
           "Resource": "arn:aws:s3:::platform-tf-state-shared-f3ddb8cc/gitops/sandbox-network/us-east-2/dev/*",
-          "Sid": "ReadAndWriteOnlyTheSandboxNetworkStateObject"
+          "Sid": "ReadOnlyTheSandboxNetworkStateObject"
         },
         {
           "Action": [
@@ -343,16 +362,27 @@ run "delivery_policy_documents_network" {
           "Sid": "UseOnlyTheStateEncryptionKey"
         },
         {
-          "Action": [
-            "dynamodb:DeleteItem",
-            "dynamodb:DescribeTable",
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:UpdateItem"
-          ],
+          "Action": "dynamodb:DescribeTable",
           "Effect": "Allow",
           "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
-          "Sid": "LockOnlyTheDedicatedStateTable"
+          "Sid": "DescribeOnlyTheDedicatedStateTable"
+        },
+        {
+          "Action": [
+            "dynamodb:DeleteItem",
+            "dynamodb:GetItem",
+            "dynamodb:PutItem"
+          ],
+          "Condition": {
+            "ForAllValues:StringLike": {
+              "dynamodb:LeadingKeys": [
+                "platform-tf-state-shared-f3ddb8cc/gitops/sandbox-network/us-east-2/dev/*"
+              ]
+            }
+          },
+          "Effect": "Allow",
+          "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
+          "Sid": "LockOnlyTheSandboxNetworkStateKeys"
         },
         {
           "Action": [
@@ -586,13 +616,10 @@ run "delivery_policy_documents_platform" {
           "Sid": "ListOnlySandboxPlatformStatePrefix"
         },
         {
-          "Action": [
-            "s3:GetObject",
-            "s3:PutObject"
-          ],
+          "Action": "s3:GetObject",
           "Effect": "Allow",
           "Resource": "arn:aws:s3:::platform-tf-state-shared-f3ddb8cc/gitops/sandbox-platform/us-east-2/dev/*",
-          "Sid": "ReadAndWriteOnlySandboxPlatformStateObject"
+          "Sid": "ReadOnlySandboxPlatformStateObject"
         },
         {
           "Action": [
@@ -606,16 +633,27 @@ run "delivery_policy_documents_platform" {
           "Sid": "UseOnlyTheStateEncryptionKey"
         },
         {
-          "Action": [
-            "dynamodb:DeleteItem",
-            "dynamodb:DescribeTable",
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:UpdateItem"
-          ],
+          "Action": "dynamodb:DescribeTable",
           "Effect": "Allow",
           "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
-          "Sid": "LockOnlyTheDedicatedStateTable"
+          "Sid": "DescribeOnlyTheDedicatedStateTable"
+        },
+        {
+          "Action": [
+            "dynamodb:DeleteItem",
+            "dynamodb:GetItem",
+            "dynamodb:PutItem"
+          ],
+          "Condition": {
+            "ForAllValues:StringLike": {
+              "dynamodb:LeadingKeys": [
+                "platform-tf-state-shared-f3ddb8cc/gitops/sandbox-platform/us-east-2/dev/*"
+              ]
+            }
+          },
+          "Effect": "Allow",
+          "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
+          "Sid": "LockOnlyTheSandboxPlatformStateKeys"
         },
         {
           "Action": [
@@ -909,13 +947,10 @@ run "delivery_policy_documents_workload" {
           "Sid": "ListOnlySandboxWorkloadStatePrefix"
         },
         {
-          "Action": [
-            "s3:GetObject",
-            "s3:PutObject"
-          ],
+          "Action": "s3:GetObject",
           "Effect": "Allow",
           "Resource": "arn:aws:s3:::platform-tf-state-shared-f3ddb8cc/gitops/sandbox-workload/us-east-2/dev/*",
-          "Sid": "ReadAndWriteOnlySandboxWorkloadStateObject"
+          "Sid": "ReadOnlySandboxWorkloadStateObject"
         },
         {
           "Action": [
@@ -929,16 +964,27 @@ run "delivery_policy_documents_workload" {
           "Sid": "UseOnlyTheStateEncryptionKey"
         },
         {
-          "Action": [
-            "dynamodb:DeleteItem",
-            "dynamodb:DescribeTable",
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:UpdateItem"
-          ],
+          "Action": "dynamodb:DescribeTable",
           "Effect": "Allow",
           "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
-          "Sid": "LockOnlyTheDedicatedStateTable"
+          "Sid": "DescribeOnlyTheDedicatedStateTable"
+        },
+        {
+          "Action": [
+            "dynamodb:DeleteItem",
+            "dynamodb:GetItem",
+            "dynamodb:PutItem"
+          ],
+          "Condition": {
+            "ForAllValues:StringLike": {
+              "dynamodb:LeadingKeys": [
+                "platform-tf-state-shared-f3ddb8cc/gitops/sandbox-workload/us-east-2/dev/*"
+              ]
+            }
+          },
+          "Effect": "Allow",
+          "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
+          "Sid": "LockOnlyTheSandboxWorkloadStateKeys"
         },
         {
           "Action": "s3:ListBucket",
@@ -1237,13 +1283,10 @@ run "delivery_policy_documents_identity" {
           "Sid": "ReadSandboxDeliveryStateBucketEncryption"
         },
         {
-          "Action": [
-            "s3:GetObject",
-            "s3:PutObject"
-          ],
+          "Action": "s3:GetObject",
           "Effect": "Allow",
           "Resource": "arn:aws:s3:::platform-tf-state-shared-f3ddb8cc/gitops/sandbox-delivery/us-east-2/global/*",
-          "Sid": "ReadAndWriteOnlySandboxDeliveryIdentityStateObject"
+          "Sid": "ReadOnlySandboxDeliveryIdentityStateObject"
         },
         {
           "Action": [
@@ -1257,16 +1300,27 @@ run "delivery_policy_documents_identity" {
           "Sid": "UseOnlyTheStateEncryptionKey"
         },
         {
-          "Action": [
-            "dynamodb:DeleteItem",
-            "dynamodb:DescribeTable",
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:UpdateItem"
-          ],
+          "Action": "dynamodb:DescribeTable",
           "Effect": "Allow",
           "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
-          "Sid": "LockOnlyTheDedicatedStateTable"
+          "Sid": "DescribeOnlyTheDedicatedStateTable"
+        },
+        {
+          "Action": [
+            "dynamodb:DeleteItem",
+            "dynamodb:GetItem",
+            "dynamodb:PutItem"
+          ],
+          "Condition": {
+            "ForAllValues:StringLike": {
+              "dynamodb:LeadingKeys": [
+                "platform-tf-state-shared-f3ddb8cc/gitops/sandbox-delivery/us-east-2/global/*"
+              ]
+            }
+          },
+          "Effect": "Allow",
+          "Resource": "arn:aws:dynamodb:us-east-2:448871779014:table/platform-tf-lock-table",
+          "Sid": "LockOnlyTheSandboxDeliveryIdentityStateKeys"
         },
         {
           "Action": [
@@ -1420,6 +1474,20 @@ run "delivery_policy_documents_identity" {
             "iam:AttachRolePolicy",
             "iam:DetachRolePolicy"
           ],
+          "Condition": {
+            "ArnEquals": {
+              "iam:PolicyARN": [
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-delivery-identity-dev-apply",
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-delivery-identity-plan",
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-network-dev-apply",
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-network-plan",
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-platform-dev-apply",
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-platform-plan",
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-workload-dev-apply",
+                "arn:aws:iam::448871779014:policy/devops-aws-infra-sandbox-sandbox-workload-plan"
+              ]
+            }
+          },
           "Effect": "Allow",
           "Resource": [
             "arn:aws:iam::448871779014:role/github-actions/devops-aws-infra-sandbox-dev-apply",
@@ -1435,7 +1503,6 @@ run "delivery_policy_documents_identity" {
           "Action": [
             "iam:TagRole",
             "iam:UntagRole",
-            "iam:UpdateAssumeRolePolicy",
             "iam:UpdateRole",
             "iam:UpdateRoleDescription"
           ],
@@ -1449,6 +1516,16 @@ run "delivery_policy_documents_identity" {
             "arn:aws:iam::448871779014:role/github-actions/devops-aws-infra-sandbox-staging-apply"
           ],
           "Sid": "ManageOnlyReviewedSandboxOidcRoles"
+        },
+        {
+          "Action": "iam:UpdateAssumeRolePolicy",
+          "Effect": "Allow",
+          "Resource": [
+            "arn:aws:iam::448871779014:role/github-actions/devops-aws-infra-sandbox-dev-apply",
+            "arn:aws:iam::448871779014:role/github-actions/devops-aws-infra-sandbox-drift",
+            "arn:aws:iam::448871779014:role/github-actions/devops-aws-infra-sandbox-plan"
+          ],
+          "Sid": "UpdateTrustOnlyForSandboxDevDeliveryRoles"
         },
         {
           "Action": [

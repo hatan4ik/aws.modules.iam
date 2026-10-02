@@ -23,6 +23,11 @@ locals {
     landing_zone  = "${var.role_prefix}-landing-zone"
   }
 
+  # The fixed roles the sandbox dev delivery pipeline itself runs as: PR and
+  # main-branch plans, dev drift detection, and the dev apply. These are the
+  # only fixed roles whose trust policy identity_dev_apply may rewrite.
+  sandbox_dev_delivery_role_keys = ["dev_apply", "drift", "plan"]
+
   github_role_arns = {
     for key, name in local.github_role_names :
     key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/github-actions/${name}"
