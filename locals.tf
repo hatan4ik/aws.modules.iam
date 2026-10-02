@@ -121,53 +121,61 @@ locals {
     key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:policy/${name}"
   }
 
+  # role_name references the real aws_iam_role resource so every attachment
+  # depends on the role it attaches to (the value is identical to
+  # local.github_role_names and known at plan time). The policy side keeps
+  # local.policy_arns so each ARN stays known at plan time (and pinned by the
+  # golden master); attachments.tf's depends_on supplies the edge to the
+  # aws_iam_policy resources. Without both edges a fresh (disaster-recovery)
+  # apply can race an attachment ahead of its role or policy and fail with
+  # NoSuchEntity.
   role_policy_attachments = {
     network_plan_to_plan = {
-      role_name  = local.github_role_names.plan
+      role_name  = aws_iam_role.github_actions["plan"].name
       policy_arn = local.policy_arns.sandbox_network_plan
     }
     network_plan_to_drift = {
-      role_name  = local.github_role_names.drift
+      role_name  = aws_iam_role.github_actions["drift"].name
       policy_arn = local.policy_arns.sandbox_network_plan
     }
     network_apply_to_dev_apply = {
-      role_name  = local.github_role_names.dev_apply
+      role_name  = aws_iam_role.github_actions["dev_apply"].name
       policy_arn = local.policy_arns.sandbox_network_dev_apply
     }
     platform_plan_to_plan = {
-      role_name  = local.github_role_names.plan
+      role_name  = aws_iam_role.github_actions["plan"].name
       policy_arn = local.policy_arns.sandbox_platform_plan
     }
     platform_plan_to_drift = {
-      role_name  = local.github_role_names.drift
+      role_name  = aws_iam_role.github_actions["drift"].name
       policy_arn = local.policy_arns.sandbox_platform_plan
     }
     platform_apply_to_dev_apply = {
-      role_name  = local.github_role_names.dev_apply
+      role_name  = aws_iam_role.github_actions["dev_apply"].name
       policy_arn = local.policy_arns.sandbox_platform_dev_apply
     }
     workload_plan_to_plan = {
-      role_name  = local.github_role_names.plan
+      role_name  = aws_iam_role.github_actions["plan"].name
       policy_arn = aws_iam_policy.sandbox_workload_plan.arn
     }
     workload_plan_to_drift = {
-      role_name  = local.github_role_names.drift
+      role_name  = aws_iam_role.github_actions["drift"].name
       policy_arn = aws_iam_policy.sandbox_workload_plan.arn
     }
     workload_apply_to_dev_apply = {
-      role_name  = local.github_role_names.dev_apply
+      role_name  = aws_iam_role.github_actions["dev_apply"].name
       policy_arn = aws_iam_policy.sandbox_workload_dev_apply.arn
     }
     identity_plan_to_plan = {
-      role_name  = local.github_role_names.plan
+      role_name  = aws_iam_role.github_actions["plan"].name
       policy_arn = local.policy_arns.identity_plan
     }
     identity_plan_to_drift = {
-      role_name  = local.github_role_names.drift
+      role_name  = aws_iam_role.github_actions["drift"].name
       policy_arn = local.policy_arns.identity_plan
     }
     identity_apply_to_dev_apply = {
-      role_name  = local.github_role_names.dev_apply
+      role_name  = aws_iam_role.github_actions["dev_apply"].name
       policy_arn = local.policy_arns.identity_dev_apply
     }
   }
