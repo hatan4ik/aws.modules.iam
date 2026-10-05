@@ -11,4 +11,18 @@ resource "aws_iam_role_policy_attachment" "delivery" {
   lifecycle {
     prevent_destroy = true
   }
+
+  # Most policy_arn values come from local.policy_arns (a string, so they
+  # stay known at plan time); this makes the ordering explicit so no
+  # attachment is attempted before its policy exists.
+  depends_on = [
+    aws_iam_policy.sandbox_network_plan,
+    aws_iam_policy.sandbox_network_dev_apply,
+    aws_iam_policy.sandbox_platform_plan,
+    aws_iam_policy.sandbox_platform_dev_apply,
+    aws_iam_policy.sandbox_workload_plan,
+    aws_iam_policy.sandbox_workload_dev_apply,
+    aws_iam_policy.identity_plan,
+    aws_iam_policy.identity_dev_apply,
+  ]
 }

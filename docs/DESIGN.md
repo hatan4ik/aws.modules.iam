@@ -22,8 +22,10 @@ pinned at `v0.1.13` (commit `b4b40a9640cf464691b8d0c88a2ca5c2aa587bb4`), the
 commit this v1.0.0 release branches from. That
 root's own `apply` role is one of the six roles this module creates: GitHub
 Actions authenticates to every other root in the platform, including this
-one, through credentials this module issues. Every resource carries
-`lifecycle { prevent_destroy = true }` by design (see README's Security
+one, through credentials this module issues. The OIDC provider, the six
+fixed roles, the eight delivery policies, and the twelve attachments carry
+`lifecycle { prevent_destroy = true }` by design (the opt-in image-publisher
+roles and their inline policies deliberately do not; see Security defaults) (see README's Security
 model and ADR 0022); there is no console-change escape hatch if a bad change
 ships.
 
@@ -74,16 +76,21 @@ headline feature of this release, not a limitation of it.
   validation is proven against `sandbox-delivery`'s real, current inputs in
   `tests/validation.tftest.hcl`'s first run, so v1.0.0 never rejects what
   v0.1.13 accepts.
-- **Two advisory `check` blocks** (`checks.tf`): warn when
-  `github_oidc_thumbprints` is empty, and warn when any role's
-  `max_session_duration` exceeds the platform's 1-hour ceiling. Both are
-  proven not to fire for `sandbox-delivery`'s real inputs.
+- **Advisory `check` blocks** (`checks.tf`): v1.0.0 shipped two, warning
+  when `github_oidc_thumbprints` is empty and when any role's
+  `max_session_duration` exceeds the platform's 1-hour ceiling. The second
+  was dead: `max_session_duration` is a literal `3600` in `oidc.tf` and
+  `image_publishers.tf`, not an input, so no caller could ever make it fire,
+  and it never had a firing test case. It has since been removed (see
+  CHANGELOG.md); `tests/oidc.tftest.hcl` asserts the literal directly for
+  both role kinds. `github_oidc_thumbprints_present` remains, with a firing
+  and a non-firing case.
 - **Deepened tests**: from one 163-line file
   (`tests/sandbox_delivery_iam.tftest.hcl`, kept unchanged and still passing)
   to seven files covering every role's trust-policy condition, every new
   validation with both an accepting and a rejecting case, both new
-  preconditions at and past their exact boundary, both checks with a firing
-  and a non-firing case, and a structural, fixture-independent proof
+  preconditions at and past their exact boundary, the thumbprint check with
+  a firing and a non-firing case, and a structural, fixture-independent proof
   (`tests/policy_shape.tftest.hcl`) that no rendered policy grants a
   full-service or global wildcard action, and that no mutating `iam:` action
   ever gets an unscoped `Resource = "*"` without a `Condition` narrowing it.
@@ -195,11 +202,11 @@ root (one call = the whole sandbox delivery identity)
 │                          role-name-length precondition.
 ├── delivery_policies.tf   aws_iam_policy.{sandbox_network,sandbox_platform,sandbox_workload}_{plan,dev_apply},
 │                          aws_iam_policy.identity_{plan,dev_apply}. Documents rendered in policies.tf.
-├── policies.tf            Unmodified from v0.1.13: every policy's jsonencode() document.
+├── policies.tf            Every policy's jsonencode() document.
 ├── attachments.tf         aws_iam_role_policy_attachment.delivery[12 pairs]. The only file that grants
 │                          permission: every role and policy exists with zero effect until attached here.
-├── checks.tf              Advisory checks: github_oidc_thumbprints_present, oidc_role_session_durations_stay_short.
-└── outputs.tf              Unmodified from v0.1.13: policy_arns, role_arns, image_publisher_role_arns,
+├── checks.tf              Advisory check: github_oidc_thumbprints_present.
+└── outputs.tf              policy_arns, role_arns, image_publisher_role_arns,
                             github_oidc_provider_arn.
 ```
 
@@ -217,10 +224,16 @@ an input at all.
 
 ## Security defaults (unchanged from v0.1.13)
 
-- Every resource carries `lifecycle { prevent_destroy = true }`, enforced in
-  the HCL (this cannot be asserted by `terraform test`, which does not see
-  `lifecycle` blocks; a reviewer confirms it directly in `oidc.tf`,
-  `image_publishers.tf`, `delivery_policies.tf`, and `attachments.tf`).
+- `lifecycle { prevent_destroy = true }` is on the OIDC provider
+  (`oidc.tf`), the six fixed roles (`oidc.tf`), the eight delivery policies
+  (`delivery_policies.tf`), and the twelve attachments (`attachments.tf`).
+  This cannot be asserted by `terraform test`, which does not see
+  `lifecycle` blocks; a reviewer confirms it directly in those files.
+- The opt-in image-publisher roles (`aws_iam_role.image_publisher`) and
+  their inline policies (`aws_iam_role_policy.image_publisher`) in
+  `image_publishers.tf` deliberately do **not** carry `prevent_destroy`:
+  removing an `image_publishers` entry is meant to delete that publisher's
+  role, and no delivery pipeline authenticates through it.
 - A role carries zero permissions on its own; only `attachments.tf` grants
   anything, so a permission change is reviewable as a policy-document diff
   independent of role or trust-policy changes.
@@ -253,7 +266,7 @@ an input at all.
 - No integration suite. This module has no safe way to create a disposable
   copy of itself: a second OIDC provider or a second set of delivery roles
   is exactly the kind of uncontrolled IAM sprawl this module exists to
-  prevent, and every resource's `prevent_destroy` means a mistaken apply
+  prevent, and the core resources' `prevent_destroy` means a mistaken apply
   cannot be cleaned up by `terraform destroy` either. See README's Testing
   section for the full reasoning and what would need to be true before one
   could be added.

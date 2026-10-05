@@ -4,7 +4,7 @@ Thank you for improving `aws.modules.iam`. Read this whole guide before opening 
 
 ## The one rule
 
-This module creates the GitHub Actions OIDC provider and the roles that authenticate every `terraform apply` in this platform, including applies of this module itself. Every resource carries `lifecycle { prevent_destroy = true }`, and there is no console-change escape hatch if a bad change ships (ADR 0022). Because of that:
+This module creates the GitHub Actions OIDC provider and the roles that authenticate every `terraform apply` in this platform, including applies of this module itself. The OIDC provider, the six fixed roles, the eight delivery policies, and their attachments carry `lifecycle { prevent_destroy = true }` (the opt-in image-publisher roles deliberately do not), and there is no console-change escape hatch if a bad change ships (ADR 0022). Because of that:
 
 **A pull request must not rename, move, or re-scope any resource's real-world identity** — a role name, a role path, a policy name, a trust-policy condition, or a decoded policy document — for any input `sandbox-delivery`'s real `terraform.tfvars` currently sets. `tests/golden_master.tftest.hcl` is built from those real inputs and enforces this mechanically. If your change makes that test fail, your change is not ready, no matter how good the underlying idea is: revert it and record it under "Deferred to v2" in [docs/DESIGN.md](docs/DESIGN.md) instead, describing what a live migration would need. This is the one module in this platform where "I found a real improvement but didn't make it" is often the correct pull request.
 
@@ -85,7 +85,7 @@ The module has no submodules; concerns are split by file, and each file has one 
 | A structural, input-independent policy invariant | `tests/policy_shape.tftest.hcl`. |
 | Outputs | `outputs.tf`; every output has a description. |
 
-Rules that apply everywhere: no data sources beyond `data.aws_partition.current`, every variable has a description, a type, and a validation where a wrong value would otherwise fail at apply time, every output has a description, and every resource keeps `lifecycle { prevent_destroy = true }` — `terraform test` cannot see a `lifecycle` block, so a reviewer confirms this by reading the diff directly.
+Rules that apply everywhere: no data sources beyond `data.aws_partition.current`, every variable has a description, a type, and a validation where a wrong value would otherwise fail at apply time, every output has a description, and every core resource (OIDC provider, fixed roles, delivery policies, attachments) keeps `lifecycle { prevent_destroy = true }` (image-publisher roles and their inline policies are the deliberate exception) — `terraform test` cannot see a `lifecycle` block, so a reviewer confirms this by reading the diff directly.
 
 ## Commits
 

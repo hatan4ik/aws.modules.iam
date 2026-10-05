@@ -18,7 +18,7 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
 resource "aws_iam_role" "github_actions" {
   for_each = local.github_roles
 
-  name                 = "${var.role_prefix}-${replace(each.key, "_", "-")}"
+  name                 = local.github_role_names[each.key]
   path                 = "/github-actions/"
   description          = each.value.description
   max_session_duration = 3600
@@ -41,7 +41,7 @@ resource "aws_iam_role" "github_actions" {
     # instead of a raw API error, without changing the name itself for any
     # role_prefix that fits (every value used today does).
     precondition {
-      condition     = length("${var.role_prefix}-${replace(each.key, "_", "-")}") <= 64
+      condition     = length(local.github_role_names[each.key]) <= 64
       error_message = "role_prefix \"${var.role_prefix}\" makes the ${each.key} role name exceed IAM's 64-character limit. Shorten role_prefix."
     }
   }

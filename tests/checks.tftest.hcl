@@ -1,8 +1,8 @@
-# checks.tf's two advisory checks: each warns without failing a real
+# checks.tf's advisory check: it warns without failing a real
 # terraform plan or apply. Under `terraform test`, a failing check fails the
 # run unless the run lists it in expect_failures (see
-# _common-v1-uplift-rules.md's known traps), so the "should warn" scenarios
-# below are written that way; the baseline run proves neither check fires for
+# _common-v1-uplift-rules.md's known traps), so the "should warn" scenario
+# below is written that way; the baseline run proves the check does not fire for
 # sandbox-delivery's real inputs.
 
 mock_provider "aws" {}
@@ -30,12 +30,12 @@ variables {
   }
 }
 
-run "neither_check_fires_for_the_real_sandbox_delivery_inputs" {
+run "check_does_not_fire_for_the_real_sandbox_delivery_inputs" {
   command = plan
 
   assert {
     condition     = aws_iam_openid_connect_provider.github_actions.url == "https://token.actions.githubusercontent.com"
-    error_message = "The real inputs (one thumbprint, hardcoded 1-hour sessions) must satisfy both advisory checks without a warning."
+    error_message = "The real inputs (one thumbprint) must satisfy the advisory check without a warning."
   }
 }
 
@@ -47,22 +47,4 @@ run "github_oidc_thumbprints_present_warns_when_the_set_is_empty" {
   }
 
   expect_failures = [check.github_oidc_thumbprints_present]
-}
-
-run "oidc_role_session_durations_stay_short_holds_for_every_role_shape" {
-  command = plan
-
-  variables {
-    image_publishers = {
-      "auth-demo" = {
-        github_subject  = "repo:hatan4ik/sandbox-auth-demo:environment:dev"
-        repository_name = "sandbox-platform-dev-application"
-      }
-    }
-  }
-
-  assert {
-    condition     = length(aws_iam_role.image_publisher) == 1
-    error_message = "This run should still create the image-publisher role alongside the six fixed roles."
-  }
 }
