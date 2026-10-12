@@ -76,6 +76,26 @@ variable "image_publishers" {
   }
 }
 
+variable "blueprint_integration_runners" {
+  description = "Dedicated GitHub OIDC runners for disposable private-microservice blueprint integration suites. Each runner is restricted to one immutable GitHub environment subject and one test-resource name prefix."
+  type = map(object({
+    github_subject  = string
+    resource_prefix = string
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for key, runner in var.blueprint_integration_runners :
+      can(regex("^[a-z][a-z0-9-]{1,20}$", key)) &&
+      can(regex("^repo:.+:environment:integration$", runner.github_subject)) &&
+      can(regex("^[a-z][a-z0-9-]{1,20}-$", runner.resource_prefix))
+    ])
+    error_message = "Each blueprint integration runner needs a short lowercase key, an immutable GitHub OIDC subject ending in :environment:integration, and a lowercase resource_prefix ending in a hyphen."
+  }
+}
+
 variable "state_backend" {
   description = "Non-secret, dedicated remote-state configuration for the sandbox delivery IAM root."
   type = object({

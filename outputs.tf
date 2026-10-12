@@ -22,6 +22,16 @@ output "image_publisher_role_arns" {
   value       = { for key, role in aws_iam_role.image_publisher : key => role.arn }
 }
 
+output "blueprint_integration_role_arns" {
+  description = "Dedicated GitHub OIDC role ARNs for disposable private-microservice blueprint integration suites."
+  value       = { for key, role in aws_iam_role.blueprint_integration : key => role.arn }
+}
+
+output "blueprint_integration_permissions_boundary_arns" {
+  description = "Permissions-boundary ARNs required on every IAM role created by each blueprint integration runner."
+  value       = { for key, policy in aws_iam_policy.blueprint_integration_boundary : key => policy.arn }
+}
+
 output "github_oidc_provider_arn" {
   description = "Terraform-owned GitHub Actions OIDC provider ARN."
   value       = aws_iam_openid_connect_provider.github_actions.arn

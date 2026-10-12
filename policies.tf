@@ -833,6 +833,55 @@ locals {
         ]
         Resource = values(local.image_publisher_role_arns)
       },
-    ])
+      ], flatten([for enabled in length(local.blueprint_integration_role_arns) > 0 ? [true] : [] : [
+        {
+          Sid      = "CreateOnlyReviewedBlueprintIntegrationPolicies"
+          Effect   = "Allow"
+          Action   = "iam:CreatePolicy"
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "iam:PolicyName" = values(local.blueprint_integration_managed_policy_names)
+            }
+          }
+        },
+        {
+          Sid    = "ManageOnlyReviewedBlueprintIntegrationPolicies"
+          Effect = "Allow"
+          Action = [
+            "iam:CreatePolicyVersion",
+            "iam:DeletePolicy",
+            "iam:DeletePolicyVersion",
+            "iam:TagPolicy",
+            "iam:UntagPolicy",
+          ]
+          Resource = values(local.blueprint_integration_managed_policy_arns)
+        },
+        {
+          Sid      = "AttachOnlyReviewedBlueprintIntegrationPolicies"
+          Effect   = "Allow"
+          Action   = ["iam:AttachRolePolicy", "iam:DetachRolePolicy"]
+          Resource = values(local.blueprint_integration_role_arns)
+          Condition = {
+            ArnEquals = {
+              "iam:PolicyARN" = values(local.blueprint_integration_policy_arns)
+            }
+          }
+        },
+        {
+          Sid    = "ManageOnlyReviewedBlueprintIntegrationRoles"
+          Effect = "Allow"
+          Action = [
+            "iam:CreateRole",
+            "iam:DeleteRole",
+            "iam:TagRole",
+            "iam:UntagRole",
+            "iam:UpdateAssumeRolePolicy",
+            "iam:UpdateRole",
+            "iam:UpdateRoleDescription",
+          ]
+          Resource = values(local.blueprint_integration_role_arns)
+        },
+    ]]))
   }
 }

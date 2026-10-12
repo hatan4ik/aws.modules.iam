@@ -54,6 +54,12 @@ variables {
       repository_name = "acme-platform-dev-application"
     }
   }
+  blueprint_integration_runners = {
+    "blueprint-private" = {
+      github_subject  = "repo:acme-corp/aws.modules.blueprint-microservice-private:environment:integration"
+      resource_prefix = "bp-e2e-"
+    }
+  }
   state_backend = {
     bucket_name     = "acme-tf-state"
     key_prefix      = "gitops/identity/eu-west-1/global/"
@@ -77,6 +83,11 @@ run "no_statement_grants_a_full_service_or_global_wildcard_action" {
         aws_iam_policy.identity_plan.policy,
         aws_iam_policy.identity_dev_apply.policy,
         aws_iam_role_policy.image_publisher["auth-demo"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/network"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/runtime"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/identity"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/registry"].policy,
+        aws_iam_policy.blueprint_integration_boundary["blueprint-private"].policy,
         ] : [
         for statement in jsondecode(policy_json).Statement : [
           for action in try(tolist(statement.Action), [statement.Action]) :
@@ -103,6 +114,11 @@ run "no_mutating_iam_action_gets_an_unscoped_resource_without_a_condition" {
         aws_iam_policy.identity_plan.policy,
         aws_iam_policy.identity_dev_apply.policy,
         aws_iam_role_policy.image_publisher["auth-demo"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/network"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/runtime"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/identity"].policy,
+        aws_iam_policy.blueprint_integration["blueprint-private/registry"].policy,
+        aws_iam_policy.blueprint_integration_boundary["blueprint-private"].policy,
         ] : [
         for statement in jsondecode(policy_json).Statement :
         anytrue([
@@ -205,6 +221,7 @@ run "identity_dev_apply_can_attach_only_tracked_policies" {
     condition = sort(flatten([
       for statement in jsondecode(aws_iam_policy.identity_dev_apply.policy).Statement :
       try(statement.Condition.ArnEquals["iam:PolicyARN"], [])
+      if statement.Sid == "ManageOnlyReviewedSandboxDeliveryPolicyAttachments"
     ])) == sort(values(local.policy_arns))
     error_message = "identity_dev_apply's iam:PolicyARN condition must be exactly this module's eight tracked delivery policy ARNs."
   }
@@ -232,7 +249,7 @@ run "identity_dev_apply_cannot_rewrite_non_dev_trust_policies" {
     condition = sort(flatten([
       for statement in jsondecode(aws_iam_policy.identity_dev_apply.policy).Statement :
       try(tolist(statement.Resource), [statement.Resource])
-      if contains(try(tolist(statement.Action), [statement.Action]), "iam:UpdateAssumeRolePolicy") && statement.Sid != "ManageOnlyReviewedSandboxImagePublisherRoles"
+      if statement.Sid == "UpdateTrustOnlyForSandboxDevDeliveryRoles"
       ])) == sort([
       "arn:aws:iam::111122223333:role/github-actions/acme-platform-dev-apply",
       "arn:aws:iam::111122223333:role/github-actions/acme-platform-drift",
