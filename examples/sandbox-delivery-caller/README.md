@@ -62,6 +62,15 @@ module "sandbox_delivery_iam" {
     }
   }
 
+  # Optional. One entry per private-microservice blueprint repository that
+  # runs the disposable real-account integration suite.
+  blueprint_integration_runners = {
+    "<short-key>" = {
+      github_subject  = "repo:<github-org>/<repository>:environment:integration"
+      resource_prefix = "bp-e2e-"
+    }
+  }
+
   # This module's own dedicated, non-secret remote-state configuration.
   # kms_key_id is the key's UUID, not an alias or ARN.
   state_backend = {
@@ -82,12 +91,15 @@ module "sandbox_delivery_iam" {
   `ecr:GetAuthorizationToken` (unscoped, which ECR requires) plus push-only
   actions on exactly the one named repository — no delete, no other
   repository.
+- Every `blueprint_integration_runners` entry as a dedicated role with four
+  bounded policies for its disposable VPC/ECS/ALB/ECR/KMS integration run.
 - The eight reviewed delivery policies (`sandbox-network`,
   `sandbox-platform`, and `sandbox-workload`, each split into a read-only
   `plan` policy and a create/update/delete `dev_apply` policy, plus this
   module's own `identity_plan`/`identity_dev_apply` pair) and the twelve
   attachments that wire them to the roles above.
-- `policy_arns`, `role_arns`, `image_publisher_role_arns`, and
+- `policy_arns`, `role_arns`, `image_publisher_role_arns`,
+  `blueprint_integration_role_arns`, and
   `github_oidc_provider_arn` outputs, for anything downstream that needs to
   reference what this module created.
 

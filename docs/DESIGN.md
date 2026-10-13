@@ -12,6 +12,9 @@ call creates:
   `staging_apply`, `prod_apply`, `drift`, `landing_zone`);
 - opt-in, per-repository image-publisher roles that can push only to one
   declared ECR repository each;
+- opt-in private-microservice blueprint integration roles, each trusted by
+  one immutable `integration` environment subject and split across four
+  bounded managed policies;
 - the reviewed delivery policies for `sandbox-network`, `sandbox-platform`,
   `sandbox-workload`, and this module's own root, `identity`; and
 - the attachments that wire each policy to the role that needs it.
@@ -200,6 +203,8 @@ root (one call = the whole sandbox delivery identity)
 │                          aws_iam_role.github_actions[6 fixed roles], role-name-length precondition.
 ├── image_publishers.tf    aws_iam_role.image_publisher[opt-in], aws_iam_role_policy.image_publisher,
 │                          role-name-length precondition.
+├── blueprint_integration.tf
+│                          opt-in integration roles, bounded policies, and attachments.
 ├── delivery_policies.tf   aws_iam_policy.{sandbox_network,sandbox_platform,sandbox_workload}_{plan,dev_apply},
 │                          aws_iam_policy.identity_{plan,dev_apply}. Documents rendered in policies.tf.
 ├── policies.tf            Every policy's jsonencode() document.

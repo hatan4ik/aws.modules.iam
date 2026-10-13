@@ -43,6 +43,46 @@ locals {
     key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/github-actions/${name}"
   }
 
+  blueprint_integration_role_names = {
+    for key in keys(var.blueprint_integration_runners) :
+    key => "${var.role_prefix}-${key}-integration"
+  }
+
+  blueprint_integration_role_arns = {
+    for key, name in local.blueprint_integration_role_names :
+    key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:role/github-actions/${name}"
+  }
+
+  blueprint_integration_policy_names = {
+    for pair in setproduct(keys(var.blueprint_integration_runners), ["network", "runtime", "identity", "registry"]) :
+    "${pair[0]}/${pair[1]}" => "${var.role_prefix}-${pair[0]}-integration-${pair[1]}"
+  }
+
+  blueprint_integration_policy_arns = {
+    for key, name in local.blueprint_integration_policy_names :
+    key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:policy/${name}"
+  }
+
+  blueprint_integration_boundary_policy_names = {
+    for key in keys(var.blueprint_integration_runners) :
+    key => "${var.role_prefix}-${key}-integration-boundary"
+  }
+
+  blueprint_integration_boundary_policy_arns = {
+    for key, name in local.blueprint_integration_boundary_policy_names :
+    key => "arn:${data.aws_partition.current.partition}:iam::${var.aws_account_id}:policy/${name}"
+  }
+
+  blueprint_integration_managed_policy_names = merge(
+    local.blueprint_integration_policy_names,
+    { for key, name in local.blueprint_integration_boundary_policy_names : "${key}/boundary" => name },
+  )
+
+  blueprint_integration_managed_policy_arns = merge(
+    local.blueprint_integration_policy_arns,
+    { for key, arn in local.blueprint_integration_boundary_policy_arns : "${key}/boundary" => arn },
+  )
+
   github_roles = {
     plan = {
       description = "OIDC plan role. No permissions until a reviewed root policy is attached."

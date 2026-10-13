@@ -1,6 +1,6 @@
 # aws.modules.iam
 
-The sandbox platform's own delivery identity: one module call creates the GitHub Actions OIDC provider, six fixed environment-scoped roles (`plan`, `dev_apply`, `staging_apply`, `prod_apply`, `drift`, `landing_zone`), opt-in per-repository image-publisher roles, and the reviewed delivery policies (and their attachments) for `sandbox-network`, `sandbox-platform`, `sandbox-workload`, and this module's own root, `identity`. It is consumed today by exactly one caller, `sandbox-delivery`, whose own `apply` role is one of the roles this module creates: GitHub Actions authenticates to every root in this platform, including this one, through credentials this module issues. Requires Terraform >= 1.7 and the AWS provider >= 6.35, < 7.
+The sandbox platform's own delivery identity: one module call creates the GitHub Actions OIDC provider, six fixed environment-scoped roles (`plan`, `dev_apply`, `staging_apply`, `prod_apply`, `drift`, `landing_zone`), opt-in per-repository image-publisher roles, opt-in disposable blueprint-integration runners, and the reviewed delivery policies (and their attachments) for `sandbox-network`, `sandbox-platform`, `sandbox-workload`, and this module's own root, `identity`. It is consumed today by exactly one caller, `sandbox-delivery`, whose own `apply` role is one of the roles this module creates: GitHub Actions authenticates to every root in this platform, including this one, through credentials this module issues. Requires Terraform >= 1.7 and the AWS provider >= 6.35, < 7.
 
 > **Frozen interface, by design.** The OIDC provider, the six fixed roles, the eight delivery policies, and their attachments all carry `lifecycle { prevent_destroy = true }` (the opt-in image-publisher roles deliberately do not; see Durability below), and there is no console-change escape hatch if a bad change ships (ADR 0022). Because of that, v1.0.0's interface is not just stable, it is **byte-for-byte frozen**: every role name, policy name, role path, trust-policy condition, and decoded policy document is identical to v0.1.13 for the same inputs, proven mechanically in [`tests/golden_master.tftest.hcl`](tests/golden_master.tftest.hcl) against `sandbox-delivery`'s real production inputs. If you are looking for the module that lets you rename or restructure things freely, this is not it — see [docs/DESIGN.md](docs/DESIGN.md) for the full reasoning and everything considered and deliberately not done.
 
@@ -8,6 +8,7 @@ The sandbox platform's own delivery identity: one module call creates the GitHub
 
 - **One trust anchor, six roles, zero permissions of their own.** `aws_iam_openid_connect_provider.github_actions` is the only OIDC provider GitHub Actions authenticates against; the six fixed roles each have a distinct trust-policy condition (a specific GitHub environment, or a pull-request/push-to-main pair for `plan`) and carry no permissions until [`attachments.tf`](attachments.tf) wires a reviewed policy to them. A permission change is reviewable as a policy-document diff, independent of any role or trust-policy change.
 - **Image-publisher roles scoped to exactly one repository.** Each `image_publishers` entry gets a dedicated role that can push (never delete) images to exactly the one ECR repository it names, plus the unscoped `ecr:GetAuthorizationToken` ECR itself requires.
+- **Blueprint integration is isolated from platform delivery.** Each `blueprint_integration_runners` entry trusts one immutable GitHub `integration` environment subject and receives four bounded managed policies. It can create and tear down only the service types needed by the real-account blueprint suite; ECR repositories, IAM roles, log groups, KMS keys, account, and Region are narrowed independently where AWS supports it.
 - **Eight reviewed delivery policies**, one read-only `plan` and one create/update/delete `dev_apply` policy per consuming root (`sandbox-network`, `sandbox-platform`, `sandbox-workload`), plus this module's own `identity_plan`/`identity_dev_apply` pair that lets Terraform manage the other seven policies' versions and the role attachments, bounded to exactly the tracked policy ARNs.
 - **Structurally provable safety.** [`tests/policy_shape.tftest.hcl`](tests/policy_shape.tftest.hcl) asserts, for any valid input, that no rendered policy grants a full-service or global wildcard action (`iam:*`, `*:*`) and that no mutating `iam:` action ever gets an unscoped `Resource = "*"` without a `Condition` narrowing it.
 - **Plan-time validation of every input**: account ID shape, Region shape, IAM-legal characters in `role_prefix`, the GitHub OIDC subject scheme, thumbprint format, and every field of the dedicated `state_backend`. Two `lifecycle.precondition` blocks catch a role name that would exceed IAM's 64-character limit before it reaches the API.
@@ -27,6 +28,8 @@ root (one call = the whole sandbox delivery identity)
 │                          aws_iam_role.github_actions[6 fixed roles], role-name-length precondition.
 ├── image_publishers.tf    aws_iam_role.image_publisher[opt-in], aws_iam_role_policy.image_publisher,
 │                          role-name-length precondition.
+├── blueprint_integration.tf
+│                          opt-in integration roles, four bounded policies per runner, and attachments.
 ├── delivery_policies.tf   aws_iam_policy.{sandbox_network,sandbox_platform,sandbox_workload}_{plan,dev_apply},
 │                          aws_iam_policy.identity_{plan,dev_apply}. Documents rendered in policies.tf.
 ├── policies.tf            Every policy's jsonencode() document.
@@ -45,21 +48,23 @@ Identity
 
 - The OIDC provider trusts exactly `token.actions.githubusercontent.com` for the `sts.amazonaws.com` audience, with the thumbprint list you declare. Six fixed roles each require a distinct GitHub Actions `sub` claim: `plan` accepts a pull request or a push to `main`; every other role accepts exactly one GitHub environment. A role has no permissions of its own — see "Permissions" below.
 - Every image-publisher role's trust condition is scoped to the exact `github_subject` declared for it, and the variable's own validation requires that subject to name the `dev` environment specifically.
+- Every blueprint-integration role's trust condition is scoped to the exact immutable `github_subject` declared for it, and validation requires the protected `integration` environment. These roles never share the platform's plan or apply identities.
 
 Permissions
 
 - Delivery policies are split into a read-only `plan` policy (state read only — no `s3:PutObject` — plus lock-table item access pinned by `dynamodb:LeadingKeys` to that root's own lock keys, plus narrow `Describe`/`Get`/`List` reads) and a `dev_apply` policy (the same, plus exactly the create/update/delete actions each root needs, most of them resource-scoped to that root's own state prefix, KMS alias, log group, or role path).
 - The `identity_dev_apply` policy — the one that lets Terraform manage this module's own resources — is itself bounded: it may create policy versions only for the policies this module tracks (`values(local.policy_arns)`), attach or detach only this module's own tracked policies (an `ArnEquals` `iam:PolicyARN` condition) on the six fixed roles, rewrite the trust policy of only the `plan`, `dev_apply`, and `drift` roles (never `staging_apply`, `prod_apply`, or `landing_zone`), and manage the OIDC provider's client ID list and thumbprint, never anything broader.
+- When a blueprint integration runner is declared, `identity_dev_apply` can manage only that role and its four exact policy ARNs. The integration role can pass only disposable prefix-matched roles to ECS tasks or VPC Flow Logs and cannot write Terraform state.
 - `tests/policy_shape.tftest.hcl` asserts structurally, for any valid input, that no statement grants `iam:*`, `*:*`, or an unscoped `Resource = "*"` on a mutating `iam:` action without a `Condition`. The few non-IAM statements that use `Resource = "*"` (for example EC2 security-group management, which AWS gives no resource-level permission for) are pre-existing, frozen behavior, not something this test flags.
 
 Durability
 
-- `lifecycle { prevent_destroy = true }` is on the OIDC provider, the six fixed roles, the eight delivery policies, and the twelve attachments. The opt-in image-publisher roles (`aws_iam_role.image_publisher`) and their inline policies (`aws_iam_role_policy.image_publisher`) deliberately do not carry it: removing an `image_publishers` entry is supposed to delete that publisher's role, and nothing else in the platform authenticates through it. `terraform test` cannot see a `lifecycle` block, so this is confirmed by reading the diff directly, not by a test assertion; see [CONTRIBUTING.md](CONTRIBUTING.md).
+- `lifecycle { prevent_destroy = true }` is on the OIDC provider, the six fixed roles, the eight delivery policies, and the twelve attachments. Opt-in image-publisher and blueprint-integration resources deliberately do not carry it: removing their declarations is supposed to delete those isolated identities after their workflows are retired. `terraform test` cannot see a `lifecycle` block, so this is confirmed by reading the diff directly, not by a test assertion; see [CONTRIBUTING.md](CONTRIBUTING.md).
 - There is deliberately no integration suite: this module has no safe way to create a disposable copy of itself, and `prevent_destroy` means a mistaken apply cannot be cleaned up by `terraform destroy` either. See "Testing" below.
 
 Not created here
 
-- The GitHub environments themselves (protection rules, required reviewers, the `dev`/`staging`/`prod`/`landing-zone` environment names the trust conditions reference) and the repository that dispatches the workflows. Those are configured in GitHub, outside Terraform, and are a prerequisite this module assumes rather than manages.
+- The GitHub environments themselves (protection rules, required reviewers, environment variables, and the names the trust conditions reference) and the repository that dispatches the workflows. Those are configured in GitHub, outside Terraform, and are a prerequisite this module assumes rather than manages.
 
 ## Lifecycle notes
 
@@ -76,6 +81,7 @@ Contract tests only, deliberately. There is no integration suite:
 - **`tests/oidc.tftest.hcl`, `tests/preconditions.tftest.hcl`, `tests/validation.tftest.hcl`, `tests/checks.tftest.hcl`** use generic, non-production inputs to prove the same rules hold for any valid caller, including every validation's accept and reject case and both preconditions at their exact 64-character boundary.
 - **`tests/policy_shape.tftest.hcl`** is fixture-independent: it holds for any input, so a future policy change is caught here regardless of which caller is exercised elsewhere.
 - **`tests/sandbox_delivery_iam.tftest.hcl`** is the original v0.1.13 suite, kept unchanged and still passing.
+- **`tests/blueprint_integration.tftest.hcl`** proves an opted-in runner's trust boundary, four-policy split, prefix scoping, PassRole restriction, and the protected delivery role's exact self-management boundary.
 - **No `tests/integration/`.** A "disposable" second OIDC provider or delivery role is exactly the kind of uncontrolled IAM sprawl this module exists to prevent, and `prevent_destroy` means a mistaken apply cannot be torn down afterward either. See [CONTRIBUTING.md](CONTRIBUTING.md) for what would need to be true before proposing one.
 
 ## Design principles
@@ -90,7 +96,7 @@ The full rationale, including everything considered and deliberately deferred, i
 ## Compatibility and scope
 
 - Terraform `>= 1.7.0, < 2.0.0`. AWS provider `>= 6.35.0, < 7.0.0`.
-- One module call manages the whole sandbox delivery identity: the OIDC provider, the six fixed roles, opt-in image-publisher roles, and the delivery policies for `sandbox-network`, `sandbox-platform`, `sandbox-workload`, and this module's own root.
+- One module call manages the whole sandbox delivery identity: the OIDC provider, the six fixed roles, opt-in image-publisher and blueprint-integration roles, and the delivery policies for `sandbox-network`, `sandbox-platform`, `sandbox-workload`, and this module's own root.
 - The v1 interface is frozen, not just stable: nothing in it is scheduled to change without a coordinated, reviewed migration. See `docs/DESIGN.md`'s "Deferred to v2" for what that would take.
 
 ## Versioning and releases
@@ -149,6 +155,8 @@ No modules.
 | Name | Type |
 |------|------|
 | [aws_iam_openid_connect_provider.github_actions](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_openid_connect_provider) | resource |
+| [aws_iam_policy.blueprint_integration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
+| [aws_iam_policy.blueprint_integration_boundary](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.identity_dev_apply](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.identity_plan](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.sandbox_network_dev_apply](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
@@ -157,9 +165,11 @@ No modules.
 | [aws_iam_policy.sandbox_platform_plan](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.sandbox_workload_dev_apply](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_policy.sandbox_workload_plan](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
+| [aws_iam_role.blueprint_integration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.github_actions](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.image_publisher](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.image_publisher](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy_attachment.blueprint_integration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.delivery](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_partition.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/partition) | data source |
 
@@ -169,6 +179,7 @@ No modules.
 |------|-------------|------|---------|:--------:|
 | <a name="input_aws_account_id"></a> [aws\_account\_id](#input\_aws\_account\_id) | AWS account that owns the existing sandbox GitHub OIDC roles and delivery policies. | `string` | n/a | yes |
 | <a name="input_aws_region"></a> [aws\_region](#input\_aws\_region) | Region containing the sandbox delivery Terraform state backend. | `string` | n/a | yes |
+| <a name="input_blueprint_integration_runners"></a> [blueprint\_integration\_runners](#input\_blueprint\_integration\_runners) | Dedicated GitHub OIDC runners for disposable private-microservice blueprint integration suites. Each runner is restricted to one immutable GitHub environment subject and one test-resource name prefix. | <pre>map(object({<br/>    github_subject  = string<br/>    resource_prefix = string<br/>  }))</pre> | `{}` | no |
 | <a name="input_github_oidc_thumbprints"></a> [github\_oidc\_thumbprints](#input\_github\_oidc\_thumbprints) | Current approved SHA-1 thumbprints for GitHub's OIDC provider. | `set(string)` | n/a | yes |
 | <a name="input_github_subject_prefix"></a> [github\_subject\_prefix](#input\_github\_subject\_prefix) | Immutable GitHub OIDC repository subject prefix, without the pull-request/ref/environment suffix. | `string` | n/a | yes |
 | <a name="input_image_publishers"></a> [image\_publishers](#input\_image\_publishers) | Dedicated GitHub OIDC image-publisher roles. Each role can push only immutable images to its declared ECR repository. | <pre>map(object({<br/>    github_subject  = string<br/>    repository_name = string<br/>  }))</pre> | `{}` | no |
@@ -179,6 +190,8 @@ No modules.
 
 | Name | Description |
 |------|-------------|
+| <a name="output_blueprint_integration_permissions_boundary_arns"></a> [blueprint\_integration\_permissions\_boundary\_arns](#output\_blueprint\_integration\_permissions\_boundary\_arns) | Permissions-boundary ARNs required on every IAM role created by each blueprint integration runner. |
+| <a name="output_blueprint_integration_role_arns"></a> [blueprint\_integration\_role\_arns](#output\_blueprint\_integration\_role\_arns) | Dedicated GitHub OIDC role ARNs for disposable private-microservice blueprint integration suites. |
 | <a name="output_github_oidc_provider_arn"></a> [github\_oidc\_provider\_arn](#output\_github\_oidc\_provider\_arn) | Terraform-owned GitHub Actions OIDC provider ARN. |
 | <a name="output_image_publisher_role_arns"></a> [image\_publisher\_role\_arns](#output\_image\_publisher\_role\_arns) | Dedicated GitHub OIDC role ARNs that can push only to their declared ECR repositories. |
 | <a name="output_policy_arns"></a> [policy\_arns](#output\_policy\_arns) | ARNs of the Terraform-owned sandbox delivery policies. |

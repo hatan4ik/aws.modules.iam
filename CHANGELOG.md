@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-12
+
+### Added
+
+- Optional `blueprint_integration_runners` create one environment-scoped GitHub OIDC role per declared private-microservice blueprint suite. Each runner receives four independently reviewable managed policies for network, runtime, identity/encryption, and ECR pull-through-cache work; resources are limited to the approved Region/account and the caller's disposable name prefix where AWS supports resource scoping.
+- The identity delivery policy can create, update, attach, detach, and remove only the declared integration roles and their four exact policy ARNs. This makes later policy maintenance immutable through the protected delivery pipeline after the one-time bootstrap.
+- Contract tests prove the default configuration remains unchanged, the integration runner has no full-service wildcard actions, `PassRole` is limited to disposable roles and ECS/VPC Flow Logs, logs and ECR are prefix-scoped, and the delivery role cannot attach unrelated policies.
+
+## [1.0.1] - 2026-10-06
+
 Security fix release. Only policy-document content changes: no role name, role path, trust-policy condition, policy name, or attachment changes. `tests/golden_master.tftest.hcl` was updated deliberately for the five narrowed documents (see its header); every other document is still byte-for-byte the v0.1.13 render.
 
 ### Security
@@ -56,6 +66,8 @@ Non-breaking release, in the strictest sense this module can offer: every role n
 
 This file starts at 1.0.0. Releases v0.1.0 through v0.1.13 predate it; see each tag's own commit message and `git log v0.1.0..v0.1.13` for that history. v1.0.0 branches from v0.1.13 (commit `b4b40a9640cf464691b8d0c88a2ca5c2aa587bb4`), the version this module's one live consumer, `sandbox-delivery`, is pinned to today.
 
-[Unreleased]: https://github.com/hatan4ik/aws.modules.iam/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/hatan4ik/aws.modules.iam/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/hatan4ik/aws.modules.iam/compare/v1.0.1...v1.1.0
+[1.0.1]: https://github.com/hatan4ik/aws.modules.iam/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/hatan4ik/aws.modules.iam/compare/v0.1.13...v1.0.0
 [0.1.13]: https://github.com/hatan4ik/aws.modules.iam/releases/tag/v0.1.13
